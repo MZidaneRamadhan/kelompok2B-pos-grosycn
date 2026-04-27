@@ -12,8 +12,8 @@ from kasir import (
 
 if __name__ == "__main__":
     dummy_products = {
-        "PRD-1": {"name": "Minyak Goreng 2L", "sell_price": 35000, "stock": 100},
-        "PRD-2": {"name": "Gula Pasir 1Kg", "sell_price": 15000, "stock": 50}
+        "PRD-1": {"name": "Minyak Goreng ", "sell_price": 35000, "stock": 100},
+        "PRD-2": {"name": "Gula Pasir ", "sell_price": 15000, "stock": 50}
     }
     save_json(FILE_BARANG, dummy_products)
     
