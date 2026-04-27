@@ -1,0 +1,12 @@
+{
+    "PRD-1": {
+        "name": "Minyak Goreng 2L",
+        "sell_price": 35000,
+        "stock": 98
+    },
+    "PRD-2": {
+        "name": "Gula Pasir 1Kg",
+        "sell_price": 15000,
+        "stock": 47
+    }
+}
