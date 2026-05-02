@@ -1,6 +1,6 @@
 import uuid
 from database.db_connection import read_json, write_json
-from models.product import new_category, new_product
+from models.barang import new_category, new_product
 
 CATEGORY_FILE = "categories.json"
 PRODUCT_FILE  = "products.json"

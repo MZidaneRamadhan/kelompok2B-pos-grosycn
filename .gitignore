@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+test_product.py
+database/data/categories.json
+database/data/products.json
