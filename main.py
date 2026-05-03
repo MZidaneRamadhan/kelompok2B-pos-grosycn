@@ -1,12 +1,30 @@
-from database import init_db, ProdukRepository, TransaksiRepository
+"""
+RetailPOS – Semi-Online Point of Sale System
+============================================
 
-# Di awal aplikasi
-init_db()
+Run:
+    pip install PyQt6
+    python main.py
+"""
 
-# Contoh buat transaksi penjualan
-TransaksiRepository.buat(
-    tipe="keluar",
-    items=[{"produk_id": 1, "jumlah": 10, "harga_satuan": 15000}],
-    nama_pelanggan="Warung Bu Sari",
-    diskon=5000,
-)
+import sys
+
+from PyQt6.QtWidgets import QApplication
+
+from views.styles.theme_manager import apply_theme
+from views.main_window import MainWindow
+
+
+def main() -> None:
+    app = QApplication(sys.argv)
+    app.setApplicationName("RetailPOS")
+    apply_theme(app)
+
+    win = MainWindow()
+    win.show()
+
+    sys.exit(app.exec())
+
+
+if __name__ == "__main__":
+    main()
