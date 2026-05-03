@@ -33,10 +33,10 @@ def get_supplier(supplier_id: str) -> dict:
     """
     [READ] Ambil detail satu supplier_model berdasarkan ID.
     """
-    supplier = supplier.get_by_id(supplier_id)
-    if not supplier:
+    if supplier := supplier.get_by_id(supplier_id):
+        return supplier                         # -> dict
+    else:
         raise ValueError(f"supplier {supplier_id} tidak ditemukan")
-    return supplier                         # -> dict
 
 
 def get_all_suppliers() -> list[dict]:
@@ -52,16 +52,13 @@ def update_supplier(supplier_id: str, supplier_name: str,
         raise ValueError("Nama supplier tidak boleh kosong")
     if not (0.0 <= rating <= 5.0):
         raise ValueError("Rating harus antara 0.0 dan 5.0")
-    if email and "@" not in email:
-        raise ValueError("Format email tidak valid")
 
-    existing = supplier_model.get_by_id(supplier_id)
-    if not existing:
+    if existing := supplier_model.get_by_id(supplier_id):
+        return supplier_model.update(
+            supplier_id, supplier_name, email, phone, rating
+        )                                       # -> bool
+    else:
         raise ValueError("supplier tidak ditemukan")
-
-    return supplier_model.update(
-        supplier_id, supplier_name, email, phone, rating
-    )                                       # -> bool
 
 
 def delete_supplier(supplier_id: str) -> bool:
@@ -69,8 +66,12 @@ def delete_supplier(supplier_id: str) -> bool:
         raise ValueError("supplier tidak ditemukan")
     return supplier_model.delete(supplier_id)  # -> bool
 
-def scrape_and_save(category: str, radius: int,
-                    min_rating: float) -> list[dict]:
+def scrape_only(category: str, radius: int,
+                min_rating: float) -> list[dict]:
+    """
+    [SCRAPE] Ambil data dari Google Places API tanpa menyimpan ke DB.
+    Setiap item sudah dilengkapi flag 'already_saved' (True/False).
+    """
     ok, msg = places_service.diagnose(API_KEY, TOKO_LAT, TOKO_LNG)
     if not ok:
         raise PlacesAPIError(msg)
@@ -99,26 +100,11 @@ def scrape_and_save(category: str, radius: int,
             "distance_m":    round(distance),
             "phone":         "-",
             "category":      category,
-            "sourceData":    f"Google Maps API — {category}",
+            "sourceData":    f"Google Maps API \u2014 {category}",
             "lat":           loc["lat"],
             "lng":           loc["lng"],
+            "already_saved": supplier_model.exists_by_place_id(place_id) if place_id else False,
         }
-
-        if place_id and not supplier_model.exists_by_place_id(place_id):
-            supplier_model.create(
-                supplier_name=supplier_dict["supplierName"],
-                email="",
-                phone="-",  
-                rating=rating,
-                source_data=supplier_dict["sourceData"],
-                category=category,
-                address=supplier_dict["address"],
-                place_id=place_id,
-                lat=loc["lat"],
-                lng=loc["lng"],
-                distance_m=round(distance),
-            )
-
         processed.append(supplier_dict)
 
     processed.sort(key=lambda x: (
@@ -128,6 +114,34 @@ def scrape_and_save(category: str, radius: int,
     ))
 
     return processed                        # -> list[dict]
+
+
+def save_suppliers(places: list[dict]) -> int:
+    """
+    [SAVE] Simpan list supplier hasil scraping ke DB.
+    Lewati yang sudah ada (already_saved=True).
+    Kembalikan jumlah baris yang benar-benar disimpan.
+    """
+    saved = 0
+    for p in places:
+        place_id = p.get("place_id", "")
+        if place_id and supplier_model.exists_by_place_id(place_id):
+            continue
+        supplier_model.create(
+            supplier_name=p["supplierName"],
+            email="",
+            phone="-",
+            rating=p["rating"],
+            source_data=p["sourceData"],
+            category=p.get("category", ""),
+            address=p["address"],
+            place_id=place_id,
+            lat=p["lat"],
+            lng=p["lng"],
+            distance_m=p["distance_m"],
+        )
+        saved += 1
+    return saved                            # -> int
 
 
 def get_supplier_detail_from_api(place_id: str) -> dict:
@@ -140,7 +154,7 @@ def get_stats() -> dict:
     suppliers = supplier_model.get_all()
     total     = len(suppliers)
     ratings   = [s["rating"] for s in suppliers if s.get("rating")]
-    categories= set(s.get("category", "") for s in suppliers)
+    categories = {s.get("category", "") for s in suppliers}
 
     return {
         "total":       total,
@@ -152,12 +166,11 @@ def get_stats() -> dict:
 # ── SEARCH & FILTER ─────────────────────────────────────────
 
 def search_suppliers_local(keyword: str) -> list[dict]:
-    keyword = keyword.lower().strip()
-    if not keyword:
+    if keyword := keyword.lower().strip():
+        return [
+            s for s in supplier_model.get_all()
+            if keyword in s["supplierName"].lower()
+            or keyword in s.get("address", "").lower()
+        ]                                       # -> list[dict]
+    else:
         return supplier_model.get_all()
-
-    return [
-        s for s in supplier_model.get_all()
-        if keyword in s["supplierName"].lower()
-        or keyword in s.get("address", "").lower()
-    ]                                       # -> list[dict]

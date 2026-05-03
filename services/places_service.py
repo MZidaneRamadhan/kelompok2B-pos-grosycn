@@ -197,7 +197,11 @@ def diagnose(api_key: str, lat: float, lng: float) -> tuple[bool, str]:
     Cek apakah API key valid dan Places API aktif.
     Kembalikan (True, pesan_ok) atau (False, pesan_error).
     """
-    if api_key in ("GANTI_DENGAN_API_KEY_KAMU", "YOUR_GOOGLE_MAPS_API_KEY", ""):
+    if api_key in {
+        "GANTI_DENGAN_API_KEY_KAMU",
+        "YOUR_GOOGLE_MAPS_API_KEY",
+        "",
+    }:
         return False, "API Key belum diisi di config.py"
 
     try:
