@@ -6,7 +6,7 @@ Ubah nilai di sini tanpa perlu menyentuh file lain.
 # ─────────────────────────────────────────
 # API & LOKASI
 # ─────────────────────────────────────────
-API_KEY  = "GANTI_DENGAN_API_KEY_KAMU"
+API_KEY  = "AIzaSyBzAnIm2ra8ij1aNruvWucMJEloWJV-ZMY"
 TOKO_LAT = -6.9175
 TOKO_LNG = 107.6191
 

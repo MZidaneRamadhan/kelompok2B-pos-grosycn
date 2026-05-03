@@ -91,7 +91,7 @@ CREATE TABLE IF NOT EXISTS member (
 -- ══════════════════════════════════════════
 -- TRANSACTION
 -- ══════════════════════════════════════════
-CREATE TABLE IF NOT EXISTS transaction (
+CREATE TABLE IF NOT EXISTS "transaction" (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     order_id        TEXT    NOT NULL,          -- daily order ID, e.g. ORD-001
     order_date      TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
@@ -115,7 +115,7 @@ CREATE TABLE IF NOT EXISTS transaction_item (
     price           REAL    NOT NULL DEFAULT 0,
     quantity        INTEGER NOT NULL DEFAULT 1,
     subtotal        REAL    NOT NULL DEFAULT 0,
-    FOREIGN KEY (transaction_id) REFERENCES transaction(id) ON DELETE CASCADE,
+    FOREIGN KEY (transaction_id) REFERENCES "transaction"(id) ON DELETE CASCADE,
     FOREIGN KEY (product_id)     REFERENCES product(id)
 );
  
@@ -155,8 +155,8 @@ CREATE TABLE IF NOT EXISTS supplier_product (
 -- INDEXES
 -- ══════════════════════════════════════════
 CREATE INDEX IF NOT EXISTS idx_product_category      ON product(category_id);
-CREATE INDEX IF NOT EXISTS idx_transaction_user       ON transaction(user_id);
-CREATE INDEX IF NOT EXISTS idx_transaction_date       ON transaction(order_date);
+CREATE INDEX IF NOT EXISTS idx_transaction_user       ON "transaction"(user_id);
+CREATE INDEX IF NOT EXISTS idx_transaction_date       ON "transaction"(order_date);
 CREATE INDEX IF NOT EXISTS idx_trx_item_transaction   ON transaction_item(transaction_id);
 CREATE INDEX IF NOT EXISTS idx_trx_item_product       ON transaction_item(product_id);
 CREATE INDEX IF NOT EXISTS idx_supplier_product_supp  ON supplier_product(supplier_id);
@@ -407,7 +407,7 @@ class TransactionRepository:
     def get_all() -> list:
         with get_connection() as conn:
             return conn.execute(
-                "SELECT t.*, u.name AS cashier FROM transaction t "
+                "SELECT t.*, u.name AS cashier FROM [transaction] t "
                 "JOIN user u ON t.user_id = u.id ORDER BY t.order_date DESC"
             ).fetchall()
  
@@ -415,7 +415,7 @@ class TransactionRepository:
     def get_by_id(trx_id: int):
         with get_connection() as conn:
             return conn.execute(
-                "SELECT * FROM transaction WHERE id=?", (trx_id,)
+                "SELECT * FROM [transaction] WHERE id=?", (trx_id,)
             ).fetchone()
  
     @staticmethod
@@ -423,7 +423,7 @@ class TransactionRepository:
         """Hitung jumlah transaksi pada tanggal tertentu (untuk order_id harian)."""
         with get_connection() as conn:
             row = conn.execute(
-                "SELECT COUNT(*) AS cnt FROM transaction WHERE order_date LIKE ?",
+                "SELECT COUNT(*) AS cnt FROM [transaction] WHERE order_date LIKE ?",
                 (f"{date_str}%",),
             ).fetchone()
             return row["cnt"] if row else 0
@@ -432,7 +432,7 @@ class TransactionRepository:
     def tambah(data: dict) -> int:
         with get_connection() as conn:
             cur = conn.execute(
-                "INSERT INTO transaction "
+                "INSERT INTO [transaction] "
                 "(order_id, order_date, customer_name, user_id, total, changes, payment_method, is_member) "
                 "VALUES (:order_id, :order_date, :customer_name, :user_id, :total, :changes, :payment_method, :is_member)",
                 data,
@@ -442,7 +442,7 @@ class TransactionRepository:
     @staticmethod
     def hapus(trx_id: int) -> None:
         with get_connection() as conn:
-            conn.execute("DELETE FROM transaction WHERE id=?", (trx_id,))
+            conn.execute("DELETE FROM [transaction] WHERE id=?", (trx_id,))
  
  
 class TransactionItemRepository:

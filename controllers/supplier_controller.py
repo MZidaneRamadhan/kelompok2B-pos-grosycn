@@ -1,4 +1,4 @@
-from models import supplier
+from models import supplier_model
 from services import places_service
 from services.places_service import PlacesAPIError
 from utils.helpers import haversine, safe_average, timestamp_now
@@ -18,7 +18,7 @@ def create_supplier(supplier_name: str, email: str,
     if email and "@" not in email:
         raise ValueError("Format email tidak valid")
 
-    return supplier.create(
+    return supplier_model.create(
         supplier_name=supplier_name,
         email=email,
         phone=phone,
@@ -31,7 +31,7 @@ def create_supplier(supplier_name: str, email: str,
 
 def get_supplier(supplier_id: str) -> dict:
     """
-    [READ] Ambil detail satu supplier berdasarkan ID.
+    [READ] Ambil detail satu supplier_model berdasarkan ID.
     """
     supplier = supplier.get_by_id(supplier_id)
     if not supplier:
@@ -43,7 +43,7 @@ def get_all_suppliers() -> list[dict]:
     """
     [READ] Ambil semua supplier aktif untuk ditampilkan di tabel.
     """
-    return supplier.get_all()         # -> list[dict]
+    return supplier_model.get_all()         # -> list[dict]
 
 
 def update_supplier(supplier_id: str, supplier_name: str,
@@ -52,20 +52,22 @@ def update_supplier(supplier_id: str, supplier_name: str,
         raise ValueError("Nama supplier tidak boleh kosong")
     if not (0.0 <= rating <= 5.0):
         raise ValueError("Rating harus antara 0.0 dan 5.0")
+    if email and "@" not in email:
+        raise ValueError("Format email tidak valid")
 
-    existing = supplier.get_by_id(supplier_id)
+    existing = supplier_model.get_by_id(supplier_id)
     if not existing:
         raise ValueError("supplier tidak ditemukan")
 
-    return supplier.update(
+    return supplier_model.update(
         supplier_id, supplier_name, email, phone, rating
     )                                       # -> bool
 
 
 def delete_supplier(supplier_id: str) -> bool:
-    if not supplier.get_by_id(supplier_id):
+    if not supplier_model.get_by_id(supplier_id):
         raise ValueError("supplier tidak ditemukan")
-    return supplier.delete(supplier_id)  # -> bool
+    return supplier_model.delete(supplier_id)  # -> bool
 
 def scrape_and_save(category: str, radius: int,
                     min_rating: float) -> list[dict]:
@@ -102,8 +104,8 @@ def scrape_and_save(category: str, radius: int,
             "lng":           loc["lng"],
         }
 
-        if place_id and not supplier.exists_by_place_id(place_id):
-            supplier.create(
+        if place_id and not supplier_model.exists_by_place_id(place_id):
+            supplier_model.create(
                 supplier_name=supplier_dict["supplierName"],
                 email="",
                 phone="-",  
@@ -135,7 +137,7 @@ def get_supplier_detail_from_api(place_id: str) -> dict:
 # ── STATISTIK untuk Stat Cards ───────────────────────────────
 
 def get_stats() -> dict:
-    suppliers = supplier.get_all()
+    suppliers = supplier_model.get_all()
     total     = len(suppliers)
     ratings   = [s["rating"] for s in suppliers if s.get("rating")]
     categories= set(s.get("category", "") for s in suppliers)
@@ -152,10 +154,10 @@ def get_stats() -> dict:
 def search_suppliers_local(keyword: str) -> list[dict]:
     keyword = keyword.lower().strip()
     if not keyword:
-        return supplier.get_all()
+        return supplier_model.get_all()
 
     return [
-        s for s in supplier.get_all()
+        s for s in supplier_model.get_all()
         if keyword in s["supplierName"].lower()
         or keyword in s.get("address", "").lower()
     ]                                       # -> list[dict]
