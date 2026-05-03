@@ -1,135 +1,97 @@
-class Theme:
+# ─────────────────────────────────────────────────────────────────────────────
+# views/styles/palettes.py
+#
+# All colour tokens for the RetailPOS design system.
+# Import individual names or the entire `PALETTE` dict – your choice.
+# ─────────────────────────────────────────────────────────────────────────────
 
-    # GLOBAL SETTINGS
-    FONT_SIZE = 16
+# ── Brand ──────────────────────────────────────────────────────────────────
+PRIMARY           = "#4f46e5"   # indigo-600
+PRIMARY_HOVER     = "#4338ca"   # indigo-700
+PRIMARY_ACTIVE    = "#3730a3"   # indigo-800
+PRIMARY_LIGHT     = "#ede9fe"   # indigo-100
 
-    RADIUS = 8
+# ── Semantic ───────────────────────────────────────────────────────────────
+SUCCESS           = "#10b981"   # emerald-500
+SUCCESS_BG        = "#d1fae5"   # emerald-100
+SUCCESS_FG        = "#065f46"   # emerald-900
 
-    FONT_WEIGHT_MEDIUM = 500
-    FONT_WEIGHT_NORMAL = 400
+WARNING           = "#f59e0b"   # amber-400
+WARNING_BG        = "#fef3c7"   # amber-100
+WARNING_FG        = "#92400e"   # amber-900
+WARNING_BORDER    = "#fde68a"   # amber-200
 
-    # LIGHT MODE (default)
-    LIGHT = {
-        "background": "#ffffff",
-        "foreground": "#242424",
+DANGER            = "#ef4444"   # red-500
+DANGER_HOVER      = "#dc2626"   # red-600
+DANGER_BG         = "#fee2e2"   # red-100
+DANGER_FG         = "#991b1b"   # red-800
+DANGER_BORDER     = "#fecaca"   # red-200
 
-        "card": "#ffffff",
-        "card_foreground": "#242424",
+PINK              = "#ec4899"   # pink-500
 
-        "popover": "#ffffff",
-        "popover_foreground": "#242424",
+# ── Neutral / surface ──────────────────────────────────────────────────────
+BG_APP            = "#f8fafc"   # slate-50   – app background
+BG_SURFACE        = "#ffffff"   # white       – card / panel
+BG_MUTED          = "#f1f5f9"   # slate-100
 
-        "primary": "#4f46e5",
-        "primary_foreground": "#ffffff",
+BORDER            = "#e2e8f0"   # slate-200
+BORDER_STRONG     = "#334155"   # slate-700
 
-        "secondary": "#f2f2f7",
-        "secondary_foreground": "#030213",
+TEXT_PRIMARY      = "#0f172a"   # slate-950
+TEXT_SECONDARY    = "#64748b"   # slate-500
+TEXT_TERTIARY     = "#94a3b8"   # slate-400
+TEXT_INVERSE      = "#f1f5f9"   # slate-100
 
-        "muted": "#ececf0",
-        "muted_foreground": "#717182",
+# ── Sidebar ────────────────────────────────────────────────────────────────
+SIDEBAR_BG        = "#1e293b"   # slate-800
+SIDEBAR_HOVER     = "#334155"   # slate-700
+SIDEBAR_ACTIVE    = PRIMARY
+SIDEBAR_TEXT      = "#94a3b8"   # slate-400
+SIDEBAR_TEXT_ACT  = "#ffffff"
 
-        "accent": "#e9ebef",
-        "accent_foreground": "#030213",
+# ── Tier colours ───────────────────────────────────────────────────────────
+TIER_COLORS = {
+    "Platinum": ("#7c3aed", "#ede9fe"),   # (fg, bg)
+    "Gold":     ("#b45309", "#fef3c7"),
+    "Silver":   ("#475569", "#f1f5f9"),
+    "Bronze":   ("#92400e", "#fef3c7"),
+}
 
-        "destructive": "#d4183d",
-        "destructive_foreground": "#ffffff",
+# ── Scrollbar ──────────────────────────────────────────────────────────────
+SCROLLBAR_TRACK  = "#f1f5f9"
+SCROLLBAR_THUMB  = "#cbd5e1"
 
-        "success": "#10b981",
-        "success_foreground": "#ffffff",
+# ── Convenience dict (for any code that iterates tokens) ──────────────────
+PALETTE = {
+    "primary":        PRIMARY,
+    "primary_hover":  PRIMARY_HOVER,
+    "primary_active": PRIMARY_ACTIVE,
+    "primary_light":  PRIMARY_LIGHT,
+    "success":        SUCCESS,
+    "success_bg":     SUCCESS_BG,
+    "success_fg":     SUCCESS_FG,
+    "warning":        WARNING,
+    "warning_bg":     WARNING_BG,
+    "warning_fg":     WARNING_FG,
+    "danger":         DANGER,
+    "danger_bg":      DANGER_BG,
+    "danger_fg":      DANGER_FG,
+    "bg_app":         BG_APP,
+    "bg_surface":     BG_SURFACE,
+    "bg_muted":       BG_MUTED,
+    "border":         BORDER,
+    "text_primary":   TEXT_PRIMARY,
+    "text_secondary": TEXT_SECONDARY,
+    "text_tertiary":  TEXT_TERTIARY,
+    "sidebar_bg":     SIDEBAR_BG,
+}
 
-        "warning": "#f59e0b",
-        "warning_foreground": "#ffffff",
 
-        "border": "rgba(0, 0, 0, 0.1)",
-        "input": "transparent",
-        "input_background": "#f3f3f5",
-        "switch_background": "#cbced4",
+def tier_fg(tier: str) -> str:
+    """Return foreground colour for a loyalty tier label."""
+    return TIER_COLORS.get(tier, (PRIMARY, PRIMARY_LIGHT))[0]
 
-        "ring": "#b3b3b3",
 
-        "chart_1": "#4f46e5",
-        "chart_2": "#10b981",
-        "chart_3": "#f59e0b",
-        "chart_4": "#8b5cf6",
-        "chart_5": "#ec4899",
-
-        "sidebar": "#f9fafb",
-        "sidebar_foreground": "#1f2937",
-        "sidebar_primary": "#4f46e5",
-        "sidebar_primary_foreground": "#ffffff",
-        "sidebar_accent": "#f3f4f6",
-        "sidebar_accent_foreground": "#1f2937",
-        "sidebar_border": "#e5e7eb",
-        "sidebar_ring": "#b3b3b3",
-    }
-
-    # DARK MODE
-    DARK = {
-        "background": "#0f1117",
-        "foreground": "#f9fafb",
-
-        "card": "#1a1c24",
-        "card_foreground": "#f9fafb",
-
-        "popover": "#1a1c24",
-        "popover_foreground": "#f9fafb",
-
-        "primary": "#6366f1",
-        "primary_foreground": "#ffffff",
-
-        "secondary": "#2a2d3a",
-        "secondary_foreground": "#f9fafb",
-
-        "muted": "#2a2d3a",
-        "muted_foreground": "#9ca3af",
-
-        "accent": "#2a2d3a",
-        "accent_foreground": "#f9fafb",
-
-        "destructive": "#ef4444",
-        "destructive_foreground": "#ffffff",
-
-        "success": "#10b981",
-        "success_foreground": "#ffffff",
-
-        "warning": "#f59e0b",
-        "warning_foreground": "#ffffff",
-
-        "border": "#2a2d3a",
-        "input": "#2a2d3a",
-        "ring": "#4b5563",
-
-        "chart_1": "#6366f1",
-        "chart_2": "#10b981",
-        "chart_3": "#f59e0b",
-        "chart_4": "#8b5cf6",
-        "chart_5": "#ec4899",
-
-        "sidebar": "#1a1c24",
-        "sidebar_foreground": "#f9fafb",
-        "sidebar_primary": "#6366f1",
-        "sidebar_primary_foreground": "#ffffff",
-        "sidebar_accent": "#2a2d3a",
-        "sidebar_accent_foreground": "#f9fafb",
-        "sidebar_border": "#2a2d3a",
-        "sidebar_ring": "#4b5563",
-    }
-
-    # ======================
-    # ACTIVE THEME
-    # ======================
-    mode = "light"
-
-    @classmethod
-    def colors(cls):
-        return cls.DARK if cls.mode == "dark" else cls.LIGHT
-
-    # 👉 Tempat semua warna / theme disimpan
-    # supaya konsisten di seluruh aplikasi
-    DARK_THEME = {
-        "sidebar": "#2c3e50",
-        "sidebar_button": "#34495e",
-        "sidebar_hover": "#1abc9c",
-        "topbar": "#ecf0f1",
-    }
-
+def tier_bg(tier: str) -> str:
+    """Return background colour for a loyalty tier label."""
+    return TIER_COLORS.get(tier, (PRIMARY, PRIMARY_LIGHT))[1]

@@ -1,92 +1,119 @@
-import sys
+# ─────────────────────────────────────────────────────────────────────────────
+# views/main_window.py
+# ─────────────────────────────────────────────────────────────────────────────
+
 from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QWidget,
-    QHBoxLayout, QVBoxLayout, QStackedWidget
+    QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
+    QStackedWidget, QScrollArea, QStatusBar,
 )
 
-# ===== IMPORT COMPONENT =====
-from views.components.sidebar import Sidebar
 from views.components.header import Header
-
-# ===== IMPORT PAGES =====
+from views.components.sidebar import Sidebar
 from views.pages.dashboard import DashboardPage
 from views.pages.pos import POSPage
 from views.pages.storage import StoragePage
-from views.pages.report import ReportPage
+from views.pages.suppliers import SuppliersPage
 from views.pages.loyalty import LoyaltyPage
+from views.pages.report import ReportsPage
+from data.state import STATE
+
+
+_PAGE_TITLES = [
+    "Dashboard",
+    "Point of Sale",
+    "Inventory Management",
+    "Supplier Management",
+    "Loyalty Program",
+    "Reports",
+]
 
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    """
+    Root application window.
+
+    Layout
+    ──────
+    ┌─────────────┬──────────────────────────────┐
+    │  Sidebar    │  Header (topbar)              │
+    │  (nav)      ├──────────────────────────────┤
+    │             │  QScrollArea                  │
+    │             │   └─ QStackedWidget (pages)   │
+    └─────────────┴──────────────────────────────┘
+    StatusBar
+    """
+
+    def __init__(self) -> None:
         super().__init__()
+        self.setWindowTitle("RetailPOS – Semi-Online POS System")
+        self.resize(1280, 780)
+        self.setMinimumSize(1000, 640)
 
-        self.setWindowTitle("POS Modular App")
-        self.setGeometry(100, 100, 1200, 700)
-
-        # ===== ROOT =====
+        # ── Root layout ───────────────────────────────────────────────────────
         central = QWidget()
         self.setCentralWidget(central)
+        root = QHBoxLayout(central)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
 
-        main_layout = QHBoxLayout()
-        central.setLayout(main_layout)
-
-        # ===== SIDEBAR =====
+        # Sidebar
         self.sidebar = Sidebar()
+        self.sidebar.page_changed.connect(self._on_page_changed)
+        root.addWidget(self.sidebar)
 
-        # ===== RIGHT SIDE =====
-        right_layout = QVBoxLayout()
+        # Right column
+        right = QWidget()
+        right_lay = QVBoxLayout(right)
+        right_lay.setContentsMargins(0, 0, 0, 0)
+        right_lay.setSpacing(0)
 
         self.header = Header()
+        self.header.toggle_online.connect(self._toggle_online)
+        right_lay.addWidget(self.header)
 
-        # ===== STACKED WIDGET (MULTI PAGE) =====
+        # Scrollable content area
+        self.content_scroll = QScrollArea()
+        self.content_scroll.setWidgetResizable(True)
+        self.content_scroll.setObjectName("content")
+
         self.stack = QStackedWidget()
+        self.content_scroll.setWidget(self.stack)
+        right_lay.addWidget(self.content_scroll)
 
-        # 👉 Tambahkan semua halaman di sini
-        self.pages = {
-            "Dashboard": DashboardPage(),
-            "POS": POSPage(),
-            "Storage": StoragePage(),
-            "Report": ReportPage(),
-            "Loyalty": LoyaltyPage(),
-        }
+        root.addWidget(right)
 
-        for page in self.pages.values():
+        # ── Pages ─────────────────────────────────────────────────────────────
+        self._pages = [
+            DashboardPage(),
+            POSPage(self.header),
+            StoragePage(),
+            SuppliersPage(),
+            LoyaltyPage(),
+            ReportsPage(),
+        ]
+        for page in self._pages:
             self.stack.addWidget(page)
+            if hasattr(page, "status_msg"):
+                page.status_msg.connect(self._show_status)
 
-        # ===== LAYOUT =====
-        right_layout.addWidget(self.header)
-        right_layout.addWidget(self.stack)
+        # ── Status bar ────────────────────────────────────────────────────────
+        self.status_bar = QStatusBar()
+        self.setStatusBar(self.status_bar)
+        self._show_status("RetailPOS ready")
 
-        main_layout.addWidget(self.sidebar)
-        main_layout.addLayout(right_layout)
+    # ── Slots ─────────────────────────────────────────────────────────────────
 
-        main_layout.setStretch(0, 2)
-        main_layout.setStretch(1, 8)
+    def _on_page_changed(self, idx: int) -> None:
+        self.header.set_title(_PAGE_TITLES[idx])
+        self.stack.setCurrentIndex(idx)
 
-        # ===== CONNECT SIDEBAR KE PAGE =====
-        self.connect_navigation()
+    def _toggle_online(self) -> None:
+        sync_msg = STATE.toggle_online()
+        self.header.update_sync_ui()
+        if sync_msg:
+            self._show_status(sync_msg)
+        else:
+            self._show_status("Switched to offline mode – transactions will be queued locally")
 
-
-    def connect_navigation(self):
-        # 👉 Loop semua tombol sidebar
-        for name, button in self.sidebar.buttons.items():
-            button.clicked.connect(lambda _, n=name: self.switch_page(n))
-
-
-    def switch_page(self, page_name):
-        # 👉 Ganti halaman berdasarkan nama
-        page = self.pages[page_name]
-        self.stack.setCurrentWidget(page)
-
-        # update title di header
-        self.header.set_title(page_name)
-
-
-# ===== ENTRY POINT =====
-if __name__ == "__main__":
-    app = QApplication(sys.argv)
-
-    window = MainWindow()
-    window.show()
-
-    sys.exit(app.exec())
+    def _show_status(self, msg: str) -> None:
+        self.status_bar.showMessage(f"  {msg}", 5000)
