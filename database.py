@@ -278,11 +278,12 @@ class CategoryProductRepository:
             return cur.lastrowid
  
     @staticmethod
-    def update(cat_id: int, category: str) -> None:
+    def update(cat_id: int, category: str) -> bool:
         with get_connection() as conn:
-            conn.execute(
+            cur = conn.execute(
                 "UPDATE category_product SET category=? WHERE id=?", (category, cat_id)
             )
+            return cur.rowcount > 0
  
     @staticmethod
     def hapus(cat_id: int) -> None:

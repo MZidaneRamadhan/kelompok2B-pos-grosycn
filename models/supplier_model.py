@@ -8,11 +8,7 @@ sehingga supplier_controller.py tidak perlu diubah sama sekali.
 """
 
 import sqlite3
-from database import get_connection, init_db
-
-
-# Pastikan tabel sudah ada saat modul pertama kali diimpor
-init_db()
+from database import get_connection
 
 
 # ─────────────────────────────────────────────────────────────────────────────
