@@ -1,7 +1,6 @@
 import json
 import os
 from datetime import datetime
-import uuid
 
 FILE_BARANG = 'database_barang.json'
 FILE_TRANSAKSI = 'database_transaksi.json'
@@ -29,17 +28,35 @@ def add_item_to_cart(session_id: str, product_id: str, quantity: int) -> str:
     if product_id in db_products:
         product = db_products[product_id]
         
-        if product["stock"] >= quantity:
-            item = {
-                "product_id": product_id,
-                "name": product["name"],
-                "price": product["sell_price"],
-                "qty": quantity,
-                "subtotal": product["sell_price"] * quantity
-            }
-            db_carts[cart_id].append(item)
+        existing_qty = 0
+        for item in db_carts[cart_id]:
+            if item["product_id"] == product_id:
+                existing_qty = item["qty"]
+                break
+
+        total_requested_qty = existing_qty + quantity
+        
+        if product["stock"] >= total_requested_qty:
+            item_exists = False
+            
+            for item in db_carts[cart_id]:
+                if item["product_id"] == product_id:
+                    item["qty"] += quantity
+                    item["subtotal"] = item["qty"] * product["sell_price"]
+                    item_exists = True
+                    break
+            
+            if not item_exists:
+                item = {
+                    "product_id": product_id,
+                    "name": product["name"],
+                    "price": product["sell_price"],
+                    "qty": quantity,
+                    "subtotal": product["sell_price"] * quantity
+                }
+                db_carts[cart_id].append(item)
         else:
-            print(f"Gagal: Stok {product['name']} hanya tersisa {product['stock']}!")
+            print(f"Gagal: Stok {product['name']} tidak cukup! (Sisa: {product['stock']}, Di keranjang: {existing_qty})")
             
     return cart_id
 
