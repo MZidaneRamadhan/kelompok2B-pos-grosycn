@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # views/pages/login.py
 # ─────────────────────────────────────────────────────────────────────────────
-
+from controllers import user_controller
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLineEdit,
     QPushButton, QLabel, QCheckBox, QDialog,
@@ -243,17 +243,22 @@ class LoginDialog(QDialog):
         self.form.login_requested.connect(self._validate)
         lay.addWidget(self.form)
 
-    # ── Validation (swap with real auth) ──────────────────────────────────────
+    # ── Validation ──────────────────────────────────────
 
     def _validate(self, username: str, password: str, remember: bool) -> None:
-        # Demo: any non-empty credentials pass
-        if username and password:
+        try:
+            token = user_controller.login(username, password)
             self._username = username
-            self.accepted_login.emit(username)
+            self._auth_token = token 
+            self.accepted_login.emit(token)
             self.accept()
-        else:
-            self.form.show_error("Invalid username or password.")
+        except ValueError as e:
+            self.form.show_error(str(e))
 
     @property
     def username(self) -> str | None:
         return self._username
+
+    @property
+    def auth_token(self) -> str | None:
+        return getattr(self, '_auth_token', None)
