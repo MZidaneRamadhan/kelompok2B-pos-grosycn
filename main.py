@@ -31,7 +31,10 @@ def main() -> None:
     if not dlg.exec():
         return
 
-    win = MainWindow()
+    win = MainWindow(
+        auth_token=dlg.auth_token or "",
+        username=dlg.username or "",
+    )
     win.show()
 
     sys.exit(app.exec())

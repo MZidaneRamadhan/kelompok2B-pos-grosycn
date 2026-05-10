@@ -14,6 +14,20 @@ from views.styles.palettes import (
 )
 
 
+def _no_users_exist() -> bool:
+    """Return True when data/users.json is absent or has no active accounts."""
+    import json
+    from pathlib import Path
+    p = Path("data/users.json")
+    if not p.exists():
+        return True
+    try:
+        data = json.loads(p.read_text())
+        return not any(u.get("is_active", True) for u in data)
+    except Exception:
+        return True
+
+
 class LoginWidget(QWidget):
     """
     Standalone login form. Emits `login_requested(username, password, remember)`
@@ -30,7 +44,6 @@ class LoginWidget(QWidget):
     # ── Build ─────────────────────────────────────────────────────────────────
 
     def _build_ui(self) -> None:
-        # Full-screen centering
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.addStretch()
@@ -73,7 +86,7 @@ class LoginWidget(QWidget):
 
         lay.addSpacing(20)
 
-        # ── Title & subtitle (no border, no background override) ─────────────
+        # ── Title & subtitle ─────────────────────────────────────────────────
         title = QLabel("Sign in to GroSync")
         title.setStyleSheet(
             f"color: {TEXT_PRIMARY}; font-size: 20px; font-weight: 700; border: none; background: transparent;"
@@ -165,6 +178,32 @@ class LoginWidget(QWidget):
         self.login_btn.clicked.connect(self._on_submit)
         lay.addWidget(self.login_btn)
 
+        lay.addSpacing(16)
+
+        # ── Register link — only shown on fresh install (no users yet) ────────
+        self._reg_row = QHBoxLayout()
+        self._reg_row.addStretch()
+        reg_lbl = QLabel(
+            f"No account yet? "
+            f"<a style='color:{PRIMARY}; text-decoration:none;' href='#'>Set up first admin</a>"
+        )
+        reg_lbl.setStyleSheet(
+            f"border: none; background: transparent; font-size: 12px; color: {TEXT_SECONDARY};"
+        )
+        reg_lbl.setTextFormat(Qt.TextFormat.RichText)
+        reg_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
+        reg_lbl.setOpenExternalLinks(False)
+        reg_lbl.linkActivated.connect(self._open_register)
+        self._reg_row.addWidget(reg_lbl)
+        self._reg_row.addStretch()
+
+        self._reg_widget = QWidget()
+        self._reg_widget.setLayout(self._reg_row)
+        self._reg_widget.setStyleSheet("background: transparent; border: none;")
+        # Only visible when no users exist (first-run / fresh install)
+        self._reg_widget.setVisible(_no_users_exist())
+        lay.addWidget(self._reg_widget)
+
         return card
 
     # ── Helpers ───────────────────────────────────────────────────────────────
@@ -191,6 +230,13 @@ class LoginWidget(QWidget):
         )
 
     # ── Slots ─────────────────────────────────────────────────────────────────
+
+    def _open_register(self, _: str = "") -> None:
+        from views.pages.register import RegisterDialog
+        dlg = RegisterDialog(auth_token=None, parent=self.window())
+        dlg.exec()
+        # After a successful registration the link should disappear
+        self._reg_widget.setVisible(_no_users_exist())
 
     def _sync_button(self) -> None:
         ready = bool(self.username.text().strip()) and bool(self.password.text())
@@ -249,7 +295,7 @@ class LoginDialog(QDialog):
         try:
             token = user_controller.login(username, password)
             self._username = username
-            self._auth_token = token 
+            self._auth_token = token
             self.accepted_login.emit(token)
             self.accept()
         except ValueError as e:
