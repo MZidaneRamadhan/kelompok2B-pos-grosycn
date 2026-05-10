@@ -6,7 +6,8 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QTableWidget, QTableWidgetItem, QHeaderView,
     QDialog, QDialogButtonBox, QFormLayout, QComboBox,
-    QTabWidget, QTextEdit, QGroupBox, QGridLayout,
+    QTabWidget, QTextEdit, QGroupBox, QGridLayout, QMessageBox,
+    QDoubleSpinBox, QScrollArea, QCheckBox,
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor
@@ -17,94 +18,80 @@ from views.styles.palettes import (
     TEXT_SECONDARY, BORDER, BG_SURFACE, WARNING_FG, WARNING_BG,
 )
 
+# ── Import controller (sambungan ke database) ─────────────────────────────────
+from controllers.supplier_controller import (
+    create_supplier,
+    get_all_suppliers,
+    get_supplier,
+    update_supplier,
+    delete_supplier,
+    search_suppliers_local,
+    get_stats,
+    scrape_only,
+    save_suppliers,
+)
+from services.places_service import PlacesAPIError
+from config import API_KEY
 
-# ── Seed data (will come from your friend's data layer eventually) ────────────
-SUPPLIERS = [
-    {
-        "id": "SUP001", "name": "Paperline Global", "contactPerson": "Andi Cahya",
-        "email": "Cahyandi@paperlineglobal.com", "phone": "+62 812-3456-7890",
-        "address": "Dago", "city": "Bandung", "state": "Jawa Barat", "zipCode": "75201",
-        "country": "Indonesia", "categories": ["Office Supplies"],
-        "rating": 4.8, "totalOrders": 145, "totalSpent": 1_312_500_000,
-        "status": "active", "paymentTerms": "Net 30", "deliveryTime": "2-3 business days",
-        "notes": "Reliable supplier with consistent quality",
-    },
-    {
-        "id": "SUP002", "name": "CV. Multi Solution Marketing", "contactPerson": "Azka Khalid",
-        "email": "KhAzka@multisolutionmarketing.com", "phone": "+62 812-3456-7890",
-        "address": "Cipondoj", "city": "Tangerang", "state": "Banten", "zipCode": "30301",
-        "country": "Indonesia", "categories": ["Office Supplies"],
-        "rating": 4.5, "totalOrders": 98, "totalSpent": 934_500_000,
-        "status": "active", "paymentTerms": "Net 45", "deliveryTime": "3-5 business days",
-        "notes": "Good pricing on bulk orders",
-    },
-    {
-        "id": "SUP003", "name": "Sumber Berkat Abadi", "contactPerson": "Eka Wicaksana",
-        "email": "wicak@sumberberkatabadi.com", "phone": "+62 812-3456-7890",
-        "address": "Sawah Besar", "city": "Jakarta Pusat", "state": "DKI Jakarta", "zipCode": "95110",
-        "country": "Indonesia", "categories": ["Electronics"],
-        "rating": 4.9, "totalOrders": 76, "totalSpent": 1_881_000_000,
-        "status": "active", "paymentTerms": "Net 30", "deliveryTime": "1-2 business days",
-        "notes": "Excellent selection of electronics and fast shipping",
-    },
-    {
-        "id": "SUP004", "name": "PT Indomarco", "contactPerson": "Johan Sugana",
-        "email": "johSugana@indomarco.com", "phone": "+62 812-3456-7890",
-        "address": "TelukJambe", "city": "Karawang Barat", "state": "Jawa Barat", "zipCode": "85001",
-        "country": "Indonesia", "categories": ["Health & Safety"],
-        "rating": 4.7, "totalOrders": 112, "totalSpent": 1_413_000_000,
-        "status": "active", "paymentTerms": "Net 30", "deliveryTime": "2-4 business days",
-        "notes": "Certified medical and safety products",
-    },
-    {
-        "id": "SUP005", "name": "PT Bersih Jaya", "contactPerson": "Jajang",
-        "email": "jajangss@bersihjaya.com", "phone": "+62 812-3456-7890",
-        "address": "Cibubur", "city": "Bekasi", "state": "Jawa Barat", "zipCode": "60601",
-        "country": "Indonesia", "categories": ["Cleaning Supplies"],
-        "rating": 4.6, "totalOrders": 132, "totalSpent": 1_183_500_000,
-        "status": "active", "paymentTerms": "Net 30", "deliveryTime": "2-3 business days",
-        "notes": "Wide range of cleaning products at competitive prices",
-    },
-]
-
-PAYMENT_TERMS = ["Net 15", "Net 30", "Net 45", "Net 60", "COD"]
+SOURCE_OPTIONS = ["manual", "google_places", "scraping"]
 
 
-def _fmt_idr(amount: int) -> str:
-    return f"Rp {amount:,.0f}".replace(",", ".")
+def _fmt_idr(amount) -> str:
+    try:
+        return f"Rp {float(amount):,.0f}".replace(",", ".")
+    except (TypeError, ValueError):
+        return "Rp 0"
+
+
+def _stars(rating) -> str:
+    try:
+        return f"⭐ {float(rating):.1f}"
+    except (TypeError, ValueError):
+        return "⭐ 0.0"
 
 
 # ─────────────────────────── Add Supplier Dialog ──────────────────────────────
 
 class AddSupplierDialog(QDialog):
-    """Two-tab dialog: Manual input | Google Places (mock)."""
+    """
+    Dialog dua tab:
+      - Manual Input  → isi form lalu simpan ke DB
+      - Google Places → scrape API lalu pilih import
+    """
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Add New Supplier")
-        self.setFixedWidth(600)
+        self.setFixedWidth(620)
+        self.setFixedHeight(680)
         self.setModal(True)
+
+        # Data yang akan dikembalikan ke pemanggil setelah accept()
+        self.saved_supplier: dict | None = None
 
         lay = QVBoxLayout(self)
         lay.setContentsMargins(24, 24, 24, 24)
         lay.setSpacing(16)
 
         lay.addWidget(make_label("Add New Supplier", 15, bold=True))
-        lay.addWidget(make_label("Add a supplier manually or find nearby via Google Places", 11, color=TEXT_SECONDARY))
+        lay.addWidget(make_label(
+            "Tambah supplier secara manual atau temukan via Google Places",
+            11, color=TEXT_SECONDARY,
+        ))
 
-        tabs = QTabWidget()
-        tabs.addTab(self._manual_tab(), "Manual Input")
-        tabs.addTab(self._google_tab(), "Google Places")
-        lay.addWidget(tabs)
+        self._tabs = QTabWidget()
+        self._tabs.addTab(self._manual_tab(), "Manual Input")
+        self._tabs.addTab(self._google_tab(), "Google Places")
+        lay.addWidget(self._tabs)
 
         btns = QDialogButtonBox()
         cancel = QPushButton("Cancel")
         cancel.setObjectName("btnOutline")
-        save = QPushButton("Add Supplier")
+        self._save_btn = QPushButton("Add Supplier")
         btns.addButton(cancel, QDialogButtonBox.ButtonRole.RejectRole)
-        btns.addButton(save, QDialogButtonBox.ButtonRole.AcceptRole)
+        btns.addButton(self._save_btn, QDialogButtonBox.ButtonRole.AcceptRole)
         cancel.clicked.connect(self.reject)
-        save.clicked.connect(self.accept)
+        self._save_btn.clicked.connect(self._on_save)
         lay.addWidget(btns)
 
     # ── Manual tab ────────────────────────────────────────────────────────────
@@ -117,55 +104,57 @@ class AddSupplierDialog(QDialog):
 
         grid = QGridLayout()
         grid.setSpacing(10)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
 
+        # Field sesuai skema DB:
+        #   supplier_name, email, number, rating, source_data
+        # Field tambahan untuk UX: address (→ alamat di DB)
         fields = [
-            ("Company Name *",   "name",          0, 0),
-            ("Contact Person *", "contactPerson", 0, 1),
-            ("Email *",          "email",         1, 0),
-            ("Phone *",          "phone",         1, 1),
-            ("Address *",        "address",       2, 0),
-            ("City *",           "city",          3, 0),
-            ("State *",          "state",         3, 1),
-            ("ZIP Code *",       "zipCode",       4, 0),
+            ("Nama Supplier *",  "supplier_name", 0, 0),
+            ("Email",            "email",         0, 1),
+            ("No. Telepon / WA", "number",        1, 0),
+            ("Alamat",           "alamat",        1, 1),
         ]
         self._fields: dict[str, QLineEdit] = {}
         for label, key, row, col in fields:
             cell = QVBoxLayout()
             cell.addWidget(make_label(label, 11, color=TEXT_SECONDARY))
             le = QLineEdit()
-            le.setPlaceholderText(label.rstrip(" *"))
+            le.setPlaceholderText("-")
             self._fields[key] = le
             cell.addWidget(le)
             grid.addLayout(cell, row, col)
 
-        # Address spans full width
-        grid.setColumnStretch(0, 1)
-        grid.setColumnStretch(1, 1)
-
         v.addLayout(grid)
 
-        # Payment terms + delivery
+        # Rating + Source Data
         row2 = QHBoxLayout()
-        terms_col = QVBoxLayout()
-        terms_col.addWidget(make_label("Payment Terms", 11, color=TEXT_SECONDARY))
-        self._terms = QComboBox()
-        self._terms.addItems(PAYMENT_TERMS)
-        terms_col.addWidget(self._terms)
-        row2.addLayout(terms_col)
 
-        delivery_col = QVBoxLayout()
-        delivery_col.addWidget(make_label("Delivery Time", 11, color=TEXT_SECONDARY))
-        self._delivery = QLineEdit()
-        self._delivery.setPlaceholderText("e.g., 2-3 business days")
-        delivery_col.addWidget(self._delivery)
-        row2.addLayout(delivery_col)
+        rating_col = QVBoxLayout()
+        rating_col.addWidget(make_label("Rating (0.0 – 5.0)", 11, color=TEXT_SECONDARY))
+        self._rating = QDoubleSpinBox()
+        self._rating.setRange(0.0, 5.0)
+        self._rating.setSingleStep(0.1)
+        self._rating.setDecimals(1)
+        self._rating.setValue(0.0)
+        rating_col.addWidget(self._rating)
+        row2.addLayout(rating_col)
+
+        source_col = QVBoxLayout()
+        source_col.addWidget(make_label("Sumber Data", 11, color=TEXT_SECONDARY))
+        self._source = QComboBox()
+        self._source.addItems(SOURCE_OPTIONS)
+        source_col.addWidget(self._source)
+        row2.addLayout(source_col)
+
         v.addLayout(row2)
 
-        # Notes
+        # Notes — disimpan sebagai bagian alamat / keterangan tambahan
         notes_col = QVBoxLayout()
-        notes_col.addWidget(make_label("Notes", 11, color=TEXT_SECONDARY))
+        notes_col.addWidget(make_label("Catatan", 11, color=TEXT_SECONDARY))
         self._notes = QTextEdit()
-        self._notes.setPlaceholderText("Additional notes about this supplier…")
+        self._notes.setPlaceholderText("Catatan tambahan tentang supplier ini…")
         self._notes.setFixedHeight(72)
         notes_col.addWidget(self._notes)
         v.addLayout(notes_col)
@@ -173,7 +162,7 @@ class AddSupplierDialog(QDialog):
         v.addStretch()
         return w
 
-    # ── Google Places tab (mock) ───────────────────────────────────────────────
+    # ── Google Places tab ─────────────────────────────────────────────────────
 
     def _google_tab(self) -> QWidget:
         w = QWidget()
@@ -181,76 +170,424 @@ class AddSupplierDialog(QDialog):
         v.setSpacing(12)
         v.setContentsMargins(0, 12, 0, 0)
 
-        v.addWidget(make_label("Search Nearby Suppliers", 11, color=TEXT_SECONDARY))
+        v.addWidget(make_label("Cari Supplier Terdekat via Google Places", 11, color=TEXT_SECONDARY))
 
+        # Baris: kategori + radius + tombol cari
         row = QHBoxLayout()
-        self._gp_search = QLineEdit()
-        self._gp_search.setPlaceholderText("e.g., 'office supplies near me'")
-        row.addWidget(self._gp_search)
-        search_btn = QPushButton("Search")
-        search_btn.clicked.connect(self._mock_search)
+
+        cat_col = QVBoxLayout()
+        cat_col.addWidget(make_label("Kategori", 11, color=TEXT_SECONDARY))
+        self._gp_category = QComboBox()
+        self._gp_category.addItems([
+            "Sembako", "Minyak Goreng", "Minuman", "Snack", "Frozen Food",
+        ])
+        cat_col.addWidget(self._gp_category)
+        row.addLayout(cat_col)
+
+        radius_col = QVBoxLayout()
+        radius_col.addWidget(make_label("Radius (meter)", 11, color=TEXT_SECONDARY))
+        self._gp_radius = QComboBox()
+        self._gp_radius.addItems(["1000", "2000", "5000", "10000"])
+        self._gp_radius.setCurrentText("5000")
+        radius_col.addWidget(self._gp_radius)
+        row.addLayout(radius_col)
+
+        rating_col2 = QVBoxLayout()
+        rating_col2.addWidget(make_label("Min. Rating", 11, color=TEXT_SECONDARY))
+        self._gp_min_rating = QDoubleSpinBox()
+        self._gp_min_rating.setRange(0.0, 5.0)
+        self._gp_min_rating.setSingleStep(0.5)
+        self._gp_min_rating.setValue(3.5)
+        rating_col2.addWidget(self._gp_min_rating)
+        row.addLayout(rating_col2)
+
+        search_btn = QPushButton("🔍  Cari")
+        search_btn.clicked.connect(self._do_scrape)
         row.addWidget(search_btn)
+
         v.addLayout(row)
 
-        note = QLabel("Note: This is a demo. In production this would use the Google Places API.")
-        note.setStyleSheet(f"color:{TEXT_SECONDARY}; font-size:11px;")
-        note.setWordWrap(True)
-        v.addWidget(note)
+        self._gp_status = QLabel("")
+        self._gp_status.setStyleSheet(f"color:{TEXT_SECONDARY}; font-size:11px;")
+        self._gp_status.setWordWrap(True)
+        v.addWidget(self._gp_status)
+
+        # Hasil scraping — dibungkus QScrollArea agar tidak meluap
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFixedHeight(340)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
 
         self._gp_results = QWidget()
         self._gp_results_lay = QVBoxLayout(self._gp_results)
         self._gp_results_lay.setSpacing(8)
-        v.addWidget(self._gp_results)
+        self._gp_results_lay.setContentsMargins(0, 0, 4, 0)
+        self._gp_results_lay.addStretch()   # dorong card ke atas
+        scroll.setWidget(self._gp_results)
+        v.addWidget(scroll)
 
-        v.addStretch()
+        # Action bar — Simpan Semua / Simpan Pilihan / Lewati
+        self._action_bar = self._build_action_bar()
+        v.addWidget(self._action_bar)
+
         return w
 
-    def _mock_search(self) -> None:
-        # Clear previous results
+    # ── Scraping Google Places → controller ───────────────────────────────────
+
+    def _do_scrape(self) -> None:
+        """Panggil scrape_only() dari controller, tampilkan hasilnya + action bar."""
+        self._clear_gp_results()
+        self._gp_status.setText("⏳ Mencari supplier terdekat…")
+        # Sembunyikan action bar dulu
+        self._action_bar.setVisible(False)
+
+        category   = self._gp_category.currentText()
+        radius     = int(self._gp_radius.currentText())
+        min_rating = self._gp_min_rating.value()
+
+        try:
+            results = scrape_only(category, radius, min_rating)
+        except PlacesAPIError as e:
+            self._gp_status.setText(f"❌ API Error: {e}")
+            return
+        except Exception as e:
+            self._gp_status.setText(f"❌ Error: {e}")
+            return
+
+        if not results:
+            self._gp_status.setText("Tidak ada supplier ditemukan dengan kriteria tersebut.")
+            return
+
+        new_count = sum(1 for r in results if not r.get("already_saved"))
+        self._gp_status.setText(
+            f"✅ Ditemukan {len(results)} supplier — "
+            f"{new_count} baru, {len(results)-new_count} sudah tersimpan."
+        )
+
+        self._gp_data: list[dict] = results
+        self._gp_checks: list = []          # simpan referensi QCheckBox
+
+        for place in results:
+            self._add_gp_card(place)
+
+        # Tampilkan action bar jika ada data baru
+        if new_count > 0:
+            self._action_bar.setVisible(True)
+        self._update_select_all_state()
+
+    def _clear_gp_results(self) -> None:
         while self._gp_results_lay.count():
             item = self._gp_results_lay.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
+        self._gp_checks = []
+        self._gp_results_lay.addStretch()   # jaga stretch di akhir
 
-        mock = [
-            {"name": "Metro Office Supply Co.",  "address": "456 Business Ave, Your City, ST 12345", "phone": "+1 (555) 111-2222", "rating": 4.5},
-            {"name": "Wholesale Direct Inc.",     "address": "789 Commerce Blvd, Your City, ST 12346", "phone": "+1 (555) 333-4444", "rating": 4.8},
-        ]
-        for place in mock:
-            card = QWidget()
-            card.setStyleSheet(
-                f"background:{BG_SURFACE}; border:1px solid {BORDER}; border-radius:8px;"
-            )
-            h = QHBoxLayout(card)
-            h.setContentsMargins(12, 10, 12, 10)
+    def _add_gp_card(self, place: dict) -> None:
+        already = place.get("already_saved", False)
 
-            info = QVBoxLayout()
-            info.addWidget(make_label(place["name"], 12, bold=True))
-            info.addWidget(make_label(place["address"], 10, color=TEXT_SECONDARY))
-            info.addWidget(make_label(f"📞 {place['phone']}  ⭐ {place['rating']}", 10, color=TEXT_SECONDARY))
-            h.addLayout(info)
-            h.addStretch()
+        card = QWidget()
+        card.setStyleSheet(
+            f"background:{BG_SURFACE}; border:1px solid {BORDER}; border-radius:8px;"
+            + (f"opacity:0.55;" if already else "")
+        )
+        h = QHBoxLayout(card)
+        h.setContentsMargins(12, 10, 12, 10)
 
-            imp = QPushButton("Import")
+        # Checkbox — disable jika sudah tersimpan
+        from PyQt6.QtWidgets import QCheckBox
+        cb = QCheckBox()
+        cb.setChecked(not already)
+        cb.setEnabled(not already)
+        cb.setToolTip("Sudah ada di database" if already else "Pilih untuk disimpan")
+        h.addWidget(cb)
+        self._gp_checks.append((cb, place))
+
+        info = QVBoxLayout()
+        name_txt = place.get("supplierName", "-")
+        if already:
+            name_txt += "  ✓ tersimpan"
+        info.addWidget(make_label(name_txt, 12, bold=True,
+                                  color=TEXT_SECONDARY if already else None))
+        info.addWidget(make_label(place.get("address", "-"), 10, color=TEXT_SECONDARY))
+        info.addWidget(make_label(
+            f"📞 {place.get('phone', '-')}  "
+            f"⭐ {place.get('rating', 0)}  "
+            f"📍 {place.get('distance_m', 0)} m",
+            10, color=TEXT_SECONDARY,
+        ))
+        h.addLayout(info)
+        h.addStretch()
+
+        if not already:
+            imp = QPushButton("Import ke Form")
             imp.setObjectName("btnSmall")
             imp.clicked.connect(lambda _, p=place: self._import_place(p))
             h.addWidget(imp)
 
-            self._gp_results_lay.addWidget(card)
+        # Sisipkan sebelum stretch yang ada di akhir layout
+        count = self._gp_results_lay.count()
+        self._gp_results_lay.insertWidget(max(0, count - 1), card)
+
+    # ── Action bar (Simpan Semua / Simpan Pilihan / Lewati) ───────────────────
+
+    def _build_action_bar(self) -> QWidget:
+        """Bar aksi di bawah hasil scraping — muncul setelah pencarian."""
+        bar = QWidget()
+        bar.setStyleSheet(
+            f"background:{BG_SURFACE}; border:1px solid {BORDER}; border-radius:8px;"
+        )
+        h = QHBoxLayout(bar)
+        h.setContentsMargins(12, 8, 12, 8)
+
+        self._chk_all = QCheckBox("Pilih Semua")
+        self._chk_all.setChecked(True)
+        self._chk_all.stateChanged.connect(self._on_select_all)
+        h.addWidget(self._chk_all)
+        h.addStretch()
+
+        self._lbl_selected = make_label("", 11, color=TEXT_SECONDARY)
+        h.addWidget(self._lbl_selected)
+
+        btn_all = QPushButton("💾  Simpan Semua")
+        btn_all.clicked.connect(self._save_all)
+        h.addWidget(btn_all)
+
+        btn_sel = QPushButton("✔  Simpan Pilihan")
+        btn_sel.setObjectName("btnOutline")
+        btn_sel.clicked.connect(self._save_selected)
+        h.addWidget(btn_sel)
+
+        btn_skip = QPushButton("✖  Lewati")
+        btn_skip.setObjectName("btnOutline")
+        btn_skip.setStyleSheet("color:#DC2626;")
+        btn_skip.clicked.connect(self._skip_save)
+        h.addWidget(btn_skip)
+
+        bar.setVisible(False)
+        return bar
+
+    def _update_select_all_state(self) -> None:
+        enabled = [cb for cb, _ in getattr(self, "_gp_checks", []) if cb.isEnabled()]
+        checked = [cb for cb in enabled if cb.isChecked()]
+        total   = len(enabled)
+        self._lbl_selected.setText(f"{len(checked)} dari {total} dipilih")
+        # Update chk_all tanpa trigger loop
+        self._chk_all.blockSignals(True)
+        self._chk_all.setChecked(len(checked) == total and total > 0)
+        self._chk_all.blockSignals(False)
+
+    def _on_select_all(self, state: int) -> None:
+        checked = bool(state)
+        for cb, _ in getattr(self, "_gp_checks", []):
+            if cb.isEnabled():
+                cb.setChecked(checked)
+        self._update_select_all_state()
+
+    def _save_all(self) -> None:
+        """Simpan semua supplier baru (yang belum ada di DB)."""
+        new_places = [p for _, p in getattr(self, "_gp_checks", [])
+                      if not p.get("already_saved")]
+        n = save_suppliers(new_places)
+        self._gp_status.setText(f"✅ {n} supplier berhasil disimpan ke database.")
+        self._action_bar.setVisible(False)
+        # Refresh checkbox state
+        for cb, _ in self._gp_checks:
+            if cb.isEnabled():
+                cb.setChecked(False)
+                cb.setEnabled(False)
+
+    def _save_selected(self) -> None:
+        """Simpan hanya supplier yang checkbox-nya dicentang."""
+        selected = [p for cb, p in getattr(self, "_gp_checks", [])
+                    if cb.isEnabled() and cb.isChecked()]
+        if not selected:
+            QMessageBox.information(self, "Info", "Tidak ada supplier yang dipilih.")
+            return
+        n = save_suppliers(selected)
+        self._gp_status.setText(f"✅ {n} supplier pilihan berhasil disimpan.")
+        self._action_bar.setVisible(False)
+        for cb, _ in self._gp_checks:
+            if cb.isEnabled():
+                cb.setChecked(False)
+                cb.setEnabled(False)
+
+    def _skip_save(self) -> None:
+        """Tutup action bar tanpa menyimpan apapun."""
+        self._action_bar.setVisible(False)
+        self._gp_status.setText("ℹ️ Tidak ada data yang disimpan.")
 
     def _import_place(self, place: dict) -> None:
-        self._fields.get("name", QLineEdit()).setText(place["name"])
-        self._fields.get("phone", QLineEdit()).setText(place["phone"])
-        self._fields.get("address", QLineEdit()).setText(place["address"])
-        self._notes.setPlainText("Auto-imported from Google Places")
+        """Isi form Manual Input dengan data dari hasil scraping."""
+        self._fields["supplier_name"].setText(place.get("supplierName", ""))
+        self._fields["number"].setText(place.get("phone", ""))
+        self._fields["alamat"].setText(place.get("address", ""))
+        self._rating.setValue(float(place.get("rating", 0)))
+        self._source.setCurrentText("google_places")
+        self._notes.setPlainText(
+            f"Diimpor dari Google Places\n"
+            f"Kategori: {place.get('category', '-')}\n"
+            f"Jarak: {place.get('distance_m', 0)} m"
+        )
+        self._tabs.setCurrentIndex(0)
+
+    # ── Simpan ke database via controller ─────────────────────────────────────
+
+    def _on_save(self) -> None:
+        """Validasi form lalu panggil create_supplier()."""
+        supplier_name = self._fields["supplier_name"].text().strip()
+        email         = self._fields["email"].text().strip()
+        number        = self._fields["number"].text().strip()
+        alamat        = self._fields["alamat"].text().strip()
+        rating        = self._rating.value()
+        source_data   = self._source.currentText()
+
+        # Gabungkan catatan ke alamat jika ada
+        catatan = self._notes.toPlainText().strip()
+
+        if not supplier_name:
+            QMessageBox.warning(self, "Validasi", "Nama supplier tidak boleh kosong.")
+            return
+
+        try:
+            new_id = create_supplier(
+                supplier_name=supplier_name,
+                email=email,
+                phone=number,
+                rating=rating,
+                category=source_data,   # pakai source sebagai category sementara
+                address=alamat,
+            )
+            # Simpan data yg baru dibuat supaya SuppliersPage bisa refresh
+            self.saved_supplier = {
+                "id":            new_id,
+                "supplier_name": supplier_name,
+                "email":         email,
+                "number":        number,
+                "alamat":        alamat,
+                "rating":        rating,
+                "source_data":   source_data,
+                "aktif":         1,
+            }
+            self.accept()
+
+        except ValueError as e:
+            QMessageBox.warning(self, "Validasi", str(e))
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Gagal menyimpan supplier:\n{e}")
+
+    def get_data(self) -> dict | None:
+        """Kembalikan data supplier yang baru disimpan (None jika cancel)."""
+        return self.saved_supplier
+
+
+# ─────────────────────────── Edit Supplier Dialog ────────────────────────────
+
+class EditSupplierDialog(QDialog):
+    """Form edit supplier — field sesuai skema DB."""
+
+    def __init__(self, supplier_data: dict, parent=None) -> None:
+        super().__init__(parent)
+        self._supplier_id = supplier_data.get("id")
+        self.setWindowTitle(f"Edit — {supplier_data.get('supplier_name', '')}")
+        self.setFixedWidth(560)
+        self.setModal(True)
+
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(24, 24, 24, 24)
+        lay.setSpacing(16)
+
+        lay.addWidget(make_label("Edit Supplier", 15, bold=True))
+        lay.addWidget(h_line())
+
+        grid = QGridLayout()
+        grid.setSpacing(10)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
+
+        fields_def = [
+            ("Nama Supplier *",  "supplier_name", 0, 0),
+            ("Email",            "email",         0, 1),
+            ("No. Telepon / WA", "number",        1, 0),
+            ("Alamat",           "alamat",        1, 1),
+        ]
+        self._fields: dict[str, QLineEdit] = {}
+        for label, key, row, col in fields_def:
+            cell = QVBoxLayout()
+            cell.addWidget(make_label(label, 11, color=TEXT_SECONDARY))
+            le = QLineEdit()
+            value = str(supplier_data.get(key, "") or "")
+            le.setText(value if value and value != "None" else "-")
+            self._fields[key] = le
+            cell.addWidget(le)
+            grid.addLayout(cell, row, col)
+
+        lay.addLayout(grid)
+
+        # Rating
+        r_row = QHBoxLayout()
+        r_col = QVBoxLayout()
+        r_col.addWidget(make_label("Rating (0.0 – 5.0)", 11, color=TEXT_SECONDARY))
+        self._rating = QDoubleSpinBox()
+        self._rating.setRange(0.0, 5.0)
+        self._rating.setSingleStep(0.1)
+        self._rating.setDecimals(1)
+        self._rating.setValue(float(supplier_data.get("rating", 0)))
+        r_col.addWidget(self._rating)
+        r_row.addLayout(r_col)
+        r_row.addStretch()
+        lay.addLayout(r_row)
+
+        # Buttons
+        btns = QDialogButtonBox()
+        cancel = QPushButton("Cancel")
+        cancel.setObjectName("btnOutline")
+        save = QPushButton("Simpan Perubahan")
+        btns.addButton(cancel, QDialogButtonBox.ButtonRole.RejectRole)
+        btns.addButton(save, QDialogButtonBox.ButtonRole.AcceptRole)
+        cancel.clicked.connect(self.reject)
+        save.clicked.connect(self._on_save)
+        lay.addWidget(btns)
+
+    def _on_save(self) -> None:
+        supplier_name = self._fields["supplier_name"].text().strip()
+        email         = self._fields["email"].text().strip()
+        number        = self._fields["number"].text().strip()
+        rating        = self._rating.value()
+
+        if not supplier_name:
+            QMessageBox.warning(self, "Validasi", "Nama supplier tidak boleh kosong.")
+            return
+
+        try:
+            update_supplier(
+                supplier_id=self._supplier_id,
+                supplier_name=supplier_name,
+                email=email,
+                phone=number,
+                rating=rating,
+            )
+            self.accept()
+        except ValueError as e:
+            QMessageBox.warning(self, "Validasi", str(e))
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Gagal memperbarui supplier:\n{e}")
 
 
 # ─────────────────────────── Supplier Detail Dialog ──────────────────────────
 
 class SupplierDetailDialog(QDialog):
-    def __init__(self, supplier: dict, parent=None) -> None:
+    """Tampilkan detail satu supplier + tombol Edit dan Delete."""
+
+    # Signal agar SuppliersPage tahu kalau ada perubahan
+    supplier_updated = pyqtSignal()
+    supplier_deleted = pyqtSignal()
+
+    def __init__(self, supplier_data: dict, parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle(supplier["name"])
+        self._data = supplier_data
+        self.setWindowTitle(supplier_data.get("supplier_name", "Detail Supplier"))
         self.setFixedWidth(580)
         self.setModal(True)
 
@@ -258,154 +595,214 @@ class SupplierDetailDialog(QDialog):
         lay.setContentsMargins(24, 24, 24, 24)
         lay.setSpacing(16)
 
-        # Title
-        title_row = QHBoxLayout()
-        title_row.addWidget(make_label(f"🏢  {supplier['name']}", 15, bold=True))
-        lay.addLayout(title_row)
-
+        # Judul
+        lay.addWidget(make_label(
+            f"🏢  {supplier_data.get('supplier_name', '-')}", 15, bold=True
+        ))
         lay.addWidget(h_line())
 
-        # Two columns
+        # Dua kolom: kontak | performa
         cols = QHBoxLayout()
 
-        # Contact card
-        contact = QGroupBox("Contact Information")
-        contact.setStyleSheet(f"QGroupBox {{ background:{BG_SURFACE}; border:1px solid {BORDER}; border-radius:10px; }}")
+        # Kontak
+        contact = QGroupBox("Informasi Kontak")
+        contact.setStyleSheet(
+            f"QGroupBox {{ background:{BG_SURFACE}; border:1px solid {BORDER}; border-radius:10px; }}"
+        )
         cv = QVBoxLayout(contact)
-        for icon, val in [
-            ("✉️", supplier["email"]),
-            ("📞", supplier["phone"]),
-            ("📍", f"{supplier['address']}, {supplier['city']}, {supplier['state']} {supplier['zipCode']}"),
+        for icon, key, fallback in [
+            ("✉️", "email",  "—"),
+            ("📞", "number", "—"),
+            ("📍", "alamat", "—"),
         ]:
             row = QHBoxLayout()
             row.addWidget(make_label(icon, 12))
-            lbl = make_label(val, 11, color=TEXT_SECONDARY)
+            lbl = make_label(supplier_data.get(key) or fallback, 11, color=TEXT_SECONDARY)
             lbl.setWordWrap(True)
             row.addWidget(lbl)
             row.addStretch()
             cv.addLayout(row)
         cols.addWidget(contact)
 
-        # Metrics card
-        metrics = QGroupBox("Performance Metrics")
-        metrics.setStyleSheet(f"QGroupBox {{ background:{BG_SURFACE}; border:1px solid {BORDER}; border-radius:10px; }}")
+        # Performa
+        metrics = QGroupBox("Performa")
+        metrics.setStyleSheet(
+            f"QGroupBox {{ background:{BG_SURFACE}; border:1px solid {BORDER}; border-radius:10px; }}"
+        )
         mv = QFormLayout(metrics)
-        mv.addRow(make_label("Rating", 11, color=TEXT_SECONDARY),
-                  make_label(f"⭐ {supplier['rating']}", 12, bold=True))
-        mv.addRow(make_label("Total Orders", 11, color=TEXT_SECONDARY),
-                  make_label(str(supplier["totalOrders"]), 12, bold=True))
-        mv.addRow(make_label("Total Spent", 11, color=TEXT_SECONDARY),
-                  make_label(_fmt_idr(supplier["totalSpent"]), 12, bold=True))
+        mv.addRow(
+            make_label("Rating", 11, color=TEXT_SECONDARY),
+            make_label(_stars(supplier_data.get("rating")), 12, bold=True),
+        )
+        mv.addRow(
+            make_label("Sumber Data", 11, color=TEXT_SECONDARY),
+            make_label(str(supplier_data.get("source_data", "manual")), 12),
+        )
+        mv.addRow(
+            make_label("Status", 11, color=TEXT_SECONDARY),
+            make_label(
+                "✅ Aktif" if supplier_data.get("aktif", 1) else "❌ Nonaktif",
+                12, bold=True,
+            ),
+        )
         cols.addWidget(metrics)
-
         lay.addLayout(cols)
 
-        # Business terms
-        terms = QGroupBox("Business Terms")
-        terms.setStyleSheet(f"QGroupBox {{ background:{BG_SURFACE}; border:1px solid {BORDER}; border-radius:10px; }}")
-        tf = QFormLayout(terms)
-        tf.addRow(make_label("Payment Terms", 11, color=TEXT_SECONDARY),
-                  make_label(supplier["paymentTerms"], 12))
-        tf.addRow(make_label("Delivery Time", 11, color=TEXT_SECONDARY),
-                  make_label(supplier["deliveryTime"], 12))
-        tf.addRow(make_label("Categories", 11, color=TEXT_SECONDARY),
-                  make_label(", ".join(supplier["categories"]), 12))
-        lay.addWidget(terms)
-
-        # Notes
-        if supplier.get("notes"):
-            notes = QGroupBox("Notes")
-            notes.setStyleSheet(f"QGroupBox {{ background:{BG_SURFACE}; border:1px solid {BORDER}; border-radius:10px; }}")
-            nv = QVBoxLayout(notes)
-            nv.addWidget(make_label(supplier["notes"], 11, color=TEXT_SECONDARY))
-            lay.addWidget(notes)
-
-        # Footer buttons
-        btns = QDialogButtonBox()
-        close_btn = QPushButton("Close")
+        # Tombol bawah: Close | Delete | Edit
+        btns = QHBoxLayout()
+        close_btn = QPushButton("Tutup")
         close_btn.setObjectName("btnOutline")
-        edit_btn = QPushButton("Edit Supplier")
-        btns.addButton(close_btn, QDialogButtonBox.ButtonRole.RejectRole)
-        btns.addButton(edit_btn, QDialogButtonBox.ButtonRole.AcceptRole)
         close_btn.clicked.connect(self.reject)
-        edit_btn.clicked.connect(self.accept)
-        lay.addWidget(btns)
+
+        del_btn = QPushButton("🗑  Hapus")
+        del_btn.setObjectName("btnOutline")
+        del_btn.setStyleSheet(f"color: #DC2626;")
+        del_btn.clicked.connect(self._on_delete)
+
+        edit_btn = QPushButton("✏️  Edit Supplier")
+        edit_btn.clicked.connect(self._on_edit)
+
+        btns.addWidget(close_btn)
+        btns.addStretch()
+        btns.addWidget(del_btn)
+        btns.addWidget(edit_btn)
+        lay.addLayout(btns)
+
+    def _on_edit(self) -> None:
+        dlg = EditSupplierDialog(self._data, self)
+        if dlg.exec():
+            self.supplier_updated.emit()
+            self.accept()
+
+    def _on_delete(self) -> None:
+        nama = self._data.get("supplier_name", "ini")
+        konfirm = QMessageBox.question(
+            self, "Konfirmasi Hapus",
+            f"Yakin ingin menghapus supplier <b>{nama}</b>?<br>"
+            f"Data akan di-nonaktifkan (soft delete).",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if konfirm != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            delete_supplier(self._data["id"])
+            self.supplier_deleted.emit()
+            self.accept()
+        except ValueError as e:
+            QMessageBox.warning(self, "Error", str(e))
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Gagal menghapus supplier:\n{e}")
 
 
 # ─────────────────────────── Suppliers Page ──────────────────────────────────
 
 class SuppliersPage(QWidget):
-    """Supplier management: directory table, add dialog, detail view."""
+    """Halaman manajemen supplier — tabel, tambah, edit, hapus."""
 
     status_msg = pyqtSignal(str)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self._suppliers = list(SUPPLIERS)  # local copy (add would append here)
+        self._suppliers: list[dict] = []
 
         lay = QVBoxLayout(self)
         lay.setSpacing(16)
         lay.setContentsMargins(0, 0, 0, 0)
 
         lay.addLayout(self._build_header())
-        lay.addLayout(self._build_stats())
+        self._stats_row = self._build_stats()
+        lay.addLayout(self._stats_row)
         lay.addLayout(self._build_controls())
         lay.addWidget(self._build_table())
 
-        self._refresh()
+        self._load_data()
 
-    # ── Sections ──────────────────────────────────────────────────────────────
+    # ── Build sections ────────────────────────────────────────────────────────
 
     def _build_header(self) -> QHBoxLayout:
         hdr = QHBoxLayout()
 
         info = QVBoxLayout()
         info.addWidget(make_label("Supplier Management", 18, bold=True))
-        info.addWidget(make_label("Manage suppliers and vendor relationships", 12, color=TEXT_SECONDARY))
+        info.addWidget(make_label(
+            "Kelola supplier dan hubungan vendor", 12, color=TEXT_SECONDARY
+        ))
         hdr.addLayout(info)
         hdr.addStretch()
 
-        add_btn = QPushButton("+ Add Supplier")
+        add_btn = QPushButton("+ Tambah Supplier")
         add_btn.clicked.connect(self._open_add_dialog)
         hdr.addWidget(add_btn)
 
         return hdr
 
     def _build_stats(self) -> QHBoxLayout:
-        active = sum(1 for s in self._suppliers if s["status"] == "active")
-        avg_rating = sum(s["rating"] for s in self._suppliers) / len(self._suppliers)
-        total_spent = sum(s["totalSpent"] for s in self._suppliers)
-        all_cats = set(c for s in self._suppliers for c in s["categories"])
-
+        """Stat cards — diisi ulang tiap _refresh_stats()."""
         row = QHBoxLayout()
-        for title, val, sub in [
-            ("Active Suppliers", str(active),              f"of {len(self._suppliers)} total"),
-            ("Avg Rating",       f"⭐ {avg_rating:.1f}",   "Based on performance"),
-            ("Total Spent",      _fmt_idr(total_spent),    "All-time purchases"),
-            ("Categories",       str(len(all_cats)),       "Product categories"),
-        ]:
+        self._stat_cards: list[tuple[QLabel, QLabel, QLabel]] = []
+
+        titles = [
+            ("Total Supplier",  "—", "dari database"),
+            ("Avg Rating",      "—", "berdasarkan performa"),
+            ("Supplier Aktif",  "—", "aktif saat ini"),
+            ("Kategori",        "—", "jenis produk"),
+        ]
+        for title, val, sub in titles:
             card = QWidget()
             card.setStyleSheet(card_style())
             cv = QVBoxLayout(card)
-            cv.addWidget(make_label(title, 11, color=TEXT_SECONDARY))
-            cv.addWidget(make_label(val, 18, bold=True))
-            cv.addWidget(make_label(sub, 10, color=TEXT_SECONDARY))
+            t_lbl = make_label(title, 11, color=TEXT_SECONDARY)
+            v_lbl = make_label(val, 18, bold=True)
+            s_lbl = make_label(sub, 10, color=TEXT_SECONDARY)
+            cv.addWidget(t_lbl)
+            cv.addWidget(v_lbl)
+            cv.addWidget(s_lbl)
+            self._stat_cards.append((t_lbl, v_lbl, s_lbl))
             row.addWidget(card)
+
         return row
+
+    def _refresh_stats(self) -> None:
+        """Update angka di stat cards dari controller."""
+        try:
+            stats = get_stats()
+        except Exception:
+            return
+
+        aktif = sum(1 for s in self._suppliers if s.get("aktif", 1))
+        cats  = set(
+            s.get("source_data", "") for s in self._suppliers if s.get("source_data")
+        )
+
+        values = [
+            str(stats.get("total", len(self._suppliers))),
+            f"⭐ {stats.get('avg_rating', 0.0):.1f}",
+            str(aktif),
+            str(len(cats)),
+        ]
+        for (_, v_lbl, _), val in zip(self._stat_cards, values):
+            v_lbl.setText(val)
 
     def _build_controls(self) -> QHBoxLayout:
         ctrl = QHBoxLayout()
         self.search = QLineEdit()
-        self.search.setPlaceholderText("🔍  Search by name, contact, category…")
-        self.search.textChanged.connect(self._refresh)
+        self.search.setPlaceholderText("🔍  Cari nama supplier, email, atau nomor…")
+        self.search.textChanged.connect(self._on_search)
         ctrl.addWidget(self.search)
+
+        refresh_btn = QPushButton("🔄")
+        refresh_btn.setToolTip("Muat ulang data dari database")
+        refresh_btn.setFixedWidth(36)
+        refresh_btn.clicked.connect(self._load_data)
+        ctrl.addWidget(refresh_btn)
+
         return ctrl
 
     def _build_table(self) -> QTableWidget:
         self.table = QTableWidget()
-        self.table.setColumnCount(7)
+        self.table.setColumnCount(6)
         self.table.setHorizontalHeaderLabels(
-            ["Supplier", "Contact", "Categories", "Rating", "Orders", "Total Spent", "Status"]
+            ["Supplier", "Email", "No. Telepon", "Rating", "Sumber", "Status"]
         )
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
@@ -413,62 +810,71 @@ class SuppliersPage(QWidget):
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.cellDoubleClicked.connect(self._open_detail)
-        self.table.setToolTip("Double-click a row to view supplier details")
+        self.table.setToolTip("Double-click untuk melihat detail supplier")
         return self.table
 
-    # ── Data ─────────────────────────────────────────────────────────────────
+    # ── Data loading ──────────────────────────────────────────────────────────
 
-    def _filtered(self) -> list[dict]:
-        q = self.search.text().lower()
-        if not q:
-            return self._suppliers
-        return [
-            s for s in self._suppliers
-            if q in s["name"].lower()
-            or q in s["contactPerson"].lower()
-            or any(q in c.lower() for c in s["categories"])
-        ]
+    def _load_data(self) -> None:
+        """Ambil semua supplier dari database via controller."""
+        try:
+            self._suppliers = get_all_suppliers()
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Gagal memuat data supplier:\n{e}")
+            self._suppliers = []
 
-    def _refresh(self) -> None:
-        rows = self._filtered()
+        self._refresh_table(self._suppliers)
+        self._refresh_stats()
+
+    def _on_search(self) -> None:
+        keyword = self.search.text().strip()
+        if not keyword:
+            self._refresh_table(self._suppliers)
+            return
+        try:
+            hasil = search_suppliers_local(keyword)
+            self._refresh_table(hasil)
+        except Exception:
+            self._refresh_table(self._suppliers)
+
+    # ── Table rendering ───────────────────────────────────────────────────────
+
+    def _refresh_table(self, rows: list[dict]) -> None:
         self.table.setRowCount(len(rows))
+
         for r, s in enumerate(rows):
-            # Supplier name + location
+            # Kolom 0: Nama supplier + alamat
             name_widget = QWidget()
             nv = QVBoxLayout(name_widget)
             nv.setContentsMargins(8, 4, 8, 4)
-            nv.addWidget(make_label(s["name"], 12, bold=True))
-            nv.addWidget(make_label(f"📍 {s['city']}, {s['state']}", 10, color=TEXT_SECONDARY))
+            nv.addWidget(make_label(s.get("supplier_name", "—"), 12, bold=True))
+            alamat = s.get("alamat", "") or s.get("address", "")
+            if alamat:
+                nv.addWidget(make_label(f"📍 {alamat}", 10, color=TEXT_SECONDARY))
             self.table.setCellWidget(r, 0, name_widget)
 
-            # Contact
-            contact_widget = QWidget()
-            cv = QVBoxLayout(contact_widget)
-            cv.setContentsMargins(8, 4, 8, 4)
-            cv.addWidget(make_label(s["contactPerson"], 11))
-            cv.addWidget(make_label(f"✉️ {s['email']}", 10, color=TEXT_SECONDARY))
-            self.table.setCellWidget(r, 1, contact_widget)
+            # Kolom 1: Email
+            self.table.setItem(r, 1, QTableWidgetItem(s.get("email", "—") or "—"))
 
-            # Categories
-            self.table.setItem(r, 2, QTableWidgetItem(", ".join(s["categories"])))
+            # Kolom 2: Nomor telepon
+            self.table.setItem(r, 2, QTableWidgetItem(s.get("number", "—") or "—"))
 
-            # Rating
-            self.table.setItem(r, 3, QTableWidgetItem(f"⭐ {s['rating']}"))
+            # Kolom 3: Rating
+            self.table.setItem(r, 3, QTableWidgetItem(_stars(s.get("rating"))))
 
-            # Orders
-            self.table.setItem(r, 4, QTableWidgetItem(str(s["totalOrders"])))
+            # Kolom 4: Sumber data
+            self.table.setItem(r, 4, QTableWidgetItem(s.get("source_data", "manual")))
 
-            # Spent
-            self.table.setItem(r, 5, QTableWidgetItem(_fmt_idr(s["totalSpent"])))
-
-            # Status badge
-            status_item = QTableWidgetItem(s["status"].capitalize())
-            if s["status"] == "active":
+            # Kolom 5: Status badge
+            aktif = s.get("aktif", 1)
+            status_item = QTableWidgetItem("Aktif" if aktif else "Nonaktif")
+            if aktif:
                 status_item.setForeground(QColor(SUCCESS_FG))
                 status_item.setBackground(QColor(SUCCESS_BG))
             else:
-                status_item.setForeground(QColor(TEXT_SECONDARY))
-            self.table.setItem(r, 6, status_item)
+                status_item.setForeground(QColor(WARNING_FG))
+                status_item.setBackground(QColor(WARNING_BG))
+            self.table.setItem(r, 5, status_item)
 
         self.table.resizeRowsToContents()
 
@@ -477,12 +883,35 @@ class SuppliersPage(QWidget):
     def _open_add_dialog(self) -> None:
         dlg = AddSupplierDialog(self)
         if dlg.exec():
-            self.status_msg.emit("Supplier added successfully!")
+            new_data = dlg.get_data()
+            if new_data:
+                nama = new_data.get("supplier_name", "")
+                self.status_msg.emit(f"✅ Supplier '{nama}' berhasil ditambahkan.")
+            self._load_data()   # reload dari DB
 
     def _open_detail(self, row: int, _: int) -> None:
-        rows = self._filtered()
-        if row >= len(rows):
+        # Ambil data dari tabel yang sedang ditampilkan (bisa hasil search)
+        keyword = self.search.text().strip()
+        if keyword:
+            try:
+                displayed = search_suppliers_local(keyword)
+            except Exception:
+                displayed = self._suppliers
+        else:
+            displayed = self._suppliers
+
+        if row >= len(displayed):
             return
-        dlg = SupplierDetailDialog(rows[row], self)
-        if dlg.exec():
-            self.status_msg.emit(f"Edit supplier: {rows[row]['name']} (coming soon)")
+
+        supplier_data = displayed[row]
+
+        dlg = SupplierDetailDialog(supplier_data, self)
+        dlg.supplier_updated.connect(lambda: (
+            self.status_msg.emit(f"✅ Supplier '{supplier_data.get('supplier_name')}' diperbarui."),
+            self._load_data(),
+        ))
+        dlg.supplier_deleted.connect(lambda: (
+            self.status_msg.emit(f"🗑 Supplier '{supplier_data.get('supplier_name')}' dihapus."),
+            self._load_data(),
+        ))
+        dlg.exec()

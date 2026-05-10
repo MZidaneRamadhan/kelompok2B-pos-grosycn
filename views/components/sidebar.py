@@ -27,6 +27,7 @@ class Sidebar(QWidget):
         ("📊", "Dashboard"),
         ("🛒", "Point of Sale"),
         ("📦", "Inventory"),
+        ("🏷️",  "Category Product"),  # ← baru, index 3
         ("🚚", "Suppliers"),
         ("⭐", "Loyalty"),
         ("📈", "Reports"),

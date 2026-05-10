@@ -3,19 +3,19 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 import random
+import re
 from datetime import datetime
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QScrollArea, QGridLayout, QComboBox, QDialog,
-    QDialogButtonBox, QFormLayout, QMessageBox,
+    QDialogButtonBox, QFormLayout, QMessageBox, QSizePolicy,
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 
 from views.styles.theme_manager import make_label, h_line, stock_badge_style
 from views.styles.palettes import PRIMARY, BG_SURFACE, BORDER, BG_APP
-from data.store import PRODUCTS
-from data.state import STATE
+from models import kasir as backend
 
 
 # ─────────────────────────────── Payment Dialog ───────────────────────────────
@@ -54,8 +54,8 @@ class PaymentDialog(QDialog):
         lay.addWidget(h_line())
 
         form = QFormLayout()
-        form.addRow(make_label("Subtotal", 12, color="#64748b"), make_label(f"${subtotal:.2f}", 12))
-        form.addRow(make_label("Tax (10%)", 12, color="#64748b"), make_label(f"${tax:.2f}", 12))
+        form.addRow(make_label("Subtotal", 12, color="#64748b"), make_label(f"Rp{subtotal:.0f}", 12))
+        form.addRow(make_label("Tax (10%)", 12, color="#64748b"), make_label(f"Rp{tax:.0f}", 12))
         lay.addLayout(form)
 
         lay.addWidget(h_line())
@@ -63,7 +63,7 @@ class PaymentDialog(QDialog):
         total_row = QHBoxLayout()
         total_row.addWidget(make_label("Total", 16, bold=True))
         total_row.addStretch()
-        total_row.addWidget(make_label(f"${total:.2f}", 18, bold=True, color=PRIMARY))
+        total_row.addWidget(make_label(f"Rp{total:.0f}", 18, bold=True, color=PRIMARY))
         lay.addLayout(total_row)
 
         btns = QDialogButtonBox()
@@ -105,11 +105,15 @@ class POSPage(QWidget):
     """
 
     status_msg = pyqtSignal(str)
+    transaction_completed = pyqtSignal()
 
     def __init__(self, header_ref, parent=None) -> None:
         super().__init__(parent)
         self.header_ref = header_ref
         self._unit_selections: dict[str, str] = {}
+
+        self.session_id = "KASIR_1" 
+        self.cart_id = f"CART-{self.session_id}"
 
         root = QHBoxLayout(self)
         root.setSpacing(16)
@@ -120,6 +124,10 @@ class POSPage(QWidget):
 
         self._refresh_grid()
         self._refresh_cart()
+
+    def refresh_products(self) -> None:
+        """Refresh the product grid when inventory or category data changes."""
+        self._refresh_grid()
 
     # ── Product panel ─────────────────────────────────────────────────────────
 
@@ -138,9 +146,14 @@ class POSPage(QWidget):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        
         self.grid_container = QWidget()
+        self.grid_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.grid_layout = QGridLayout(self.grid_container)
-        self.grid_layout.setSpacing(12)
+        self.grid_layout.setContentsMargins(0, 0, 0, 0)
+        self.grid_layout.setSpacing(14)
+        self.grid_layout.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+
         scroll.setWidget(self.grid_container)
         lay.addWidget(scroll)
 
@@ -182,13 +195,13 @@ class POSPage(QWidget):
 
         lay.addWidget(h_line())
 
-        self.subtotal_lbl = make_label("Subtotal: $0.00", 12, color="#64748b")
-        self.tax_lbl = make_label("Tax (10%): $0.00", 12, color="#64748b")
+        self.subtotal_lbl = make_label("Subtotal: Rp0", 12, color="#64748b")
+        self.tax_lbl = make_label("Tax (10%): Rp0", 12, color="#64748b")
         lay.addWidget(self.subtotal_lbl)
         lay.addWidget(self.tax_lbl)
         lay.addWidget(h_line())
 
-        self.total_lbl = make_label("Total: $0.00", 16, bold=True)
+        self.total_lbl = make_label("Total: Rp0", 16, bold=True)
         lay.addWidget(self.total_lbl)
 
         self.checkout_btn = QPushButton("Checkout")
@@ -201,14 +214,30 @@ class POSPage(QWidget):
 
     def _filtered_products(self) -> list[dict]:
         q = self.search.text().lower()
+        
+        # Load langsung dari JSON via backend
+        db_products = backend.load_json(backend.FILE_BARANG)
+        
+        prods = []
+        for prod_id, p in db_products.items():
+            p["id"] = prod_id 
+            p.setdefault("image", "📦")
+            p.setdefault("low", 5)
+            p.setdefault("sku", prod_id)
+            p.setdefault("category", "General")
+            if "pricing" not in p:
+                 p["pricing"] = [{"unit": "piece", "price": p.get("sell_price", 0), "qty": 1}]
+            prods.append(p)
+
         if not q:
-            return PRODUCTS
+            return prods
+            
         return [
-            p for p in PRODUCTS
+            p for p in prods
             if q in p["name"].lower()
             or q in p["sku"].lower()
             or q in p["category"].lower()
-            or q in (p.get("brand") or "").lower()
+            or q in p.get("brand", "").lower()
         ]
 
     def _refresh_grid(self) -> None:
@@ -228,18 +257,37 @@ class POSPage(QWidget):
         for i, p in enumerate(prods):
             self.grid_layout.addWidget(self._product_card(p), i // cols, i % cols)
 
+        for col in range(cols):
+            self.grid_layout.setColumnStretch(col, 1)
+
     def _product_card(self, p: dict) -> QWidget:
         w = QWidget()
         w.setStyleSheet(
             f"background:{BG_SURFACE}; border:1px solid {BORDER}; border-radius:10px;"
         )
+        
+        w.setMaximumHeight(280)
+        w.setMaximumWidth(260)
+        w.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
         v = QVBoxLayout(w)
         v.setContentsMargins(14, 14, 14, 14)
         v.setSpacing(6)
 
-        # Emoji + stock badge
+        # Product icon + stock badge
         top = QHBoxLayout()
-        top.addWidget(make_label(p["image"], 28))
+        image_text = str(p.get("image", "")).strip()
+        if not image_text or all(ord(ch) < 128 for ch in image_text) or len(image_text) > 2:
+            image_text = p["name"][:1].upper()
+
+        icon_label = QLabel(image_text)
+        icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        icon_label.setFixedSize(36, 36)
+        icon_label.setStyleSheet(
+            "background:#e2e8f0; color:#0f172a; border-radius:18px;"
+            " font-size:16px; font-weight:700;"
+        )
+        top.addWidget(icon_label)
         top.addStretch()
         is_low = p["stock"] < p["low"]
         stock_lbl = QLabel(str(p["stock"]))
@@ -248,7 +296,9 @@ class POSPage(QWidget):
         v.addLayout(top)
 
         v.addWidget(make_label(p["name"], 12, bold=True))
-        v.addWidget(make_label(p.get("brand", ""), 11, color="#64748b"))
+        meta_text = p.get("brand") or p.get("category", "")
+        if meta_text:
+            v.addWidget(make_label(meta_text, 11, color="#64748b"))
         v.addWidget(make_label(p["sku"], 10, color="#94a3b8"))
 
         # Unit selector
@@ -257,11 +307,11 @@ class POSPage(QWidget):
         for pricing in p["pricing"]:
             u, pr, qty = pricing["unit"], pricing["price"], pricing["qty"]
             if u == "piece":
-                label = f"Per Piece – ${pr:.2f}"
+                label = f"Per Piece – Rp{pr:.0f}"
             elif u == "pack":
-                label = f"Per Pack ({qty}) – ${pr:.2f}"
+                label = f"Per Pack ({qty}) – Rp{pr:.0f}"
             else:
-                label = f"Per Box ({qty}) – ${pr:.2f}"
+                label = f"Per Box ({qty}) – Rp{pr:.0f}"
             unit_combo.addItem(label, userData=u)
 
         saved = self._unit_selections.get(pid, "piece")
@@ -279,7 +329,7 @@ class POSPage(QWidget):
         bottom = QHBoxLayout()
         cur_unit = self._unit_selections.get(pid, "piece")
         pricing = next((pr for pr in p["pricing"] if pr["unit"] == cur_unit), p["pricing"][0])
-        bottom.addWidget(make_label(f"${pricing['price']:.2f}", 15, bold=True))
+        bottom.addWidget(make_label(f"Rp{pricing['price']:.0f}", 15, bold=True))
         bottom.addStretch()
         add_btn = QPushButton("+ Add")
         add_btn.setObjectName("btnSmall")
@@ -292,20 +342,29 @@ class POSPage(QWidget):
     # ── Cart refresh ─────────────────────────────────────────────────────────
 
     def _refresh_cart(self) -> None:
-        # Remove all widgets except the trailing stretch
+       # Remove all widgets except the trailing stretch
         while self.cart_lay.count() > 1:
             item = self.cart_lay.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
 
-        for item in STATE.cart:
+        cart_items = backend.db_carts.get(self.cart_id, [])
+
+        for item in cart_items:
+            item.setdefault("image", "📦")
+            item.setdefault("productName", item.get("name", "Unknown"))
+            item.setdefault("unit", "piece")
+            item.setdefault("productId", item.get("product_id"))
+            
             self.cart_lay.insertWidget(self.cart_lay.count() - 1, self._cart_row(item))
 
-        subtotal = STATE.cart_total()
+        subtotal = backend.calculate_subtotal(self.cart_id)
         tax = subtotal * 0.1
-        self.subtotal_lbl.setText(f"Subtotal: ${subtotal:.2f}")
-        self.tax_lbl.setText(f"Tax (10%): ${tax:.2f}")
-        self.total_lbl.setText(f"Total: ${subtotal + tax:.2f}")
+        total = subtotal + tax
+
+        self.subtotal_lbl.setText(f"Subtotal: Rp{subtotal:.0f}")
+        self.tax_lbl.setText(f"Tax (10%): Rp{tax:.0f}")
+        self.total_lbl.setText(f"Total: Rp{total:.0f}")
 
     def _cart_row(self, item: dict) -> QWidget:
         w = QWidget()
@@ -320,7 +379,7 @@ class POSPage(QWidget):
 
         info = QVBoxLayout()
         info.addWidget(make_label(item["productName"], 11, bold=True))
-        info.addWidget(make_label(f"${item['price']:.2f} / {item['unit']}", 10, color="#64748b"))
+        info.addWidget(make_label(f"Rp{item['price']:.0f} / {item['unit']}", 10, color="#64748b"))
         h.addLayout(info)
         h.addStretch()
 
@@ -342,7 +401,7 @@ class POSPage(QWidget):
                 qty_row.addWidget(btn)
         ctrl.addLayout(qty_row)
 
-        line_total = make_label(f"${item['price'] * item['qty']:.2f}", 11, bold=True, color=PRIMARY)
+        line_total = make_label(f"Rp{item['price'] * item['qty']:.0f}", 11, bold=True, color=PRIMARY)
         line_total.setAlignment(Qt.AlignmentFlag.AlignCenter)
         ctrl.addWidget(line_total)
         h.addLayout(ctrl)
@@ -359,29 +418,42 @@ class POSPage(QWidget):
 
     def _add_to_cart(self, p: dict, unit_combo: QComboBox) -> None:
         unit = unit_combo.currentData()
-        pricing = next((pr for pr in p["pricing"] if pr["unit"] == unit), p["pricing"][0])
-        STATE.add_to_cart(p["id"], p["name"], pricing["price"], unit, p["image"])
+        qty_multiplier = next((pr["qty"] for pr in p["pricing"] if pr["unit"] == unit), 1)
+        
+        backend.add_item_to_cart(self.session_id, p["id"], qty_multiplier)
         self._refresh_cart()
         self.status_msg.emit(f"Added {p['name']} ({unit}) to cart")
 
     def _change_qty(self, item: dict, delta: int) -> None:
-        STATE.update_qty(item["productId"], item["unit"], item["qty"] + delta)
+        cart_items = backend.db_carts.get(self.cart_id, [])
+        
+        for c_item in cart_items:
+            if c_item["product_id"] == item["productId"]:
+                new_qty = c_item["qty"] + delta
+                if new_qty > 0:
+                    c_item["qty"] = new_qty
+                    c_item["subtotal"] = c_item["price"] * new_qty
+                else:
+                    self._remove(item)
+                break
+                
         self._refresh_cart()
 
     def _remove(self, item: dict) -> None:
-        STATE.remove_from_cart(item["productId"], item["unit"])
+        backend.remove_item_from_cart(self.cart_id, item["product_id"]) 
         self._refresh_cart()
 
     def _clear_cart(self) -> None:
-        STATE.clear_cart()
+        backend.db_carts[self.cart_id] = []
         self._refresh_cart()
 
     def _checkout(self) -> None:
-        if not STATE.cart:
+        cart_items = backend.db_carts.get(self.cart_id, [])
+        if not cart_items:
             QMessageBox.information(self, "Empty Cart", "Add products before checking out.")
             return
 
-        subtotal = STATE.cart_total()
+        subtotal = backend.calculate_subtotal(self.cart_id)
         tax = subtotal * 0.1
         total = subtotal + tax
 
@@ -389,13 +461,22 @@ class POSPage(QWidget):
         if not dlg.exec():
             return
 
-        txn_id = f"TXN-{datetime.now().strftime('%Y%m%d')}-{random.randint(1, 999):03d}"
-        if not STATE.is_online:
-            STATE.offline_queue.append({"id": txn_id, "total": total})
-            self.header_ref.update_sync_ui()
-            self.status_msg.emit(f"Transaction {txn_id} queued offline – will sync when online")
-        else:
+        payment_status = backend.process_payment(self.cart_id, total, total, dlg.payment_method)
+        
+        if payment_status["status"]:
+            order_id = f"ORD-{datetime.now().strftime('%Y%m%d')}-{random.randint(1, 999):03d}"
+            
+            txn_id = backend.create_transaction(
+                order_id=order_id,
+                customer_name="Pelanggan Umum", 
+                payment_method=dlg.payment_method,
+                is_member=False, 
+                items=cart_items
+            )
+            
             self.status_msg.emit(f"Payment successful! Transaction {txn_id} complete")
-
-        STATE.clear_cart()
-        self._refresh_cart()
+            self.transaction_completed.emit()
+            self._clear_cart()
+            self._refresh_grid()
+        else:
+            QMessageBox.warning(self, "Payment Failed", payment_status.get("error", "Unknown error"))
