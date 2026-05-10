@@ -217,7 +217,7 @@ QProgressBar {{
     background: {BORDER};
     height: 6px;
     text-align: center;
-    font-size: 0px;
+    color: transparent;
 }}
 QProgressBar::chunk {{ border-radius: 4px; background: {PRIMARY}; }}
 

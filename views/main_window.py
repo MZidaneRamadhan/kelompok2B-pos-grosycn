@@ -12,6 +12,7 @@ from views.components.sidebar import Sidebar
 from views.pages.dashboard import DashboardPage
 from views.pages.pos import POSPage
 from views.pages.storage import StoragePage
+from views.pages.productcategory import CategoryProductPage
 from views.pages.suppliers import SuppliersPage
 from views.pages.loyalty import LoyaltyPage
 from views.pages.report import ReportsPage
@@ -22,6 +23,7 @@ _PAGE_TITLES = [
     "Dashboard",
     "Point of Sale",
     "Inventory Management",
+    "Product Category Management",
     "Supplier Management",
     "Loyalty Program",
     "Reports",
@@ -87,6 +89,7 @@ class MainWindow(QMainWindow):
             DashboardPage(),
             POSPage(self.header),
             StoragePage(),
+            CategoryProductPage(),
             SuppliersPage(),
             LoyaltyPage(),
             ReportsPage(),
