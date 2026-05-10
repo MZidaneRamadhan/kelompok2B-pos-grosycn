@@ -275,6 +275,7 @@ def apply_theme(app) -> None:
 def make_label(text: str, size: int = 13, bold: bool = False, color: str | None = None) -> QLabel:
     """Create a styled QLabel with optional font size, bold, and colour."""
     lbl = QLabel(text)
+    lbl.setWordWrap(True)
     f = lbl.font()
     f.setPointSize(size)
     if bold:

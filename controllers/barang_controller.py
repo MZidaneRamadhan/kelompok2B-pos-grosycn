@@ -6,6 +6,12 @@ Menggunakan SQLite via database.get_connection().
 
 import logging
 from database import get_connection
+from models.barang_sync import (
+    delete_json_product,
+    sync_json_category,
+    sync_json_from_db,
+    update_json_product,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +53,9 @@ def get_all_categories() -> list[dict]:
 
 def update_category(category_id: int, new_category_name: str) -> bool:
     """[UPDATE] Mengubah nama category. Mengembalikan True jika berhasil."""
+    old_category = get_category(category_id)
+    old_name = old_category["category"] if old_category else ""
+
     try:
         with get_connection() as conn:
             cur = conn.execute(
@@ -56,6 +65,8 @@ def update_category(category_id: int, new_category_name: str) -> bool:
             success = cur.rowcount > 0
             if success:
                 logger.info(f"Category {category_id} updated to '{new_category_name}'")
+                if old_name and old_name != new_category_name:
+                    sync_json_category(old_name, new_category_name)
             else:
                 logger.warning(f"Category {category_id} not found for update")
             return success
@@ -66,6 +77,9 @@ def update_category(category_id: int, new_category_name: str) -> bool:
 
 def delete_category(category_id: int) -> bool:
     """[DELETE] Menghapus category dari sistem."""
+    old_category = get_category(category_id)
+    old_name = old_category["category"] if old_category else ""
+
     try:
         with get_connection() as conn:
             cur = conn.execute(
@@ -74,6 +88,8 @@ def delete_category(category_id: int) -> bool:
             success = cur.rowcount > 0
             if success:
                 logger.info(f"Category {category_id} deleted")
+                if old_name:
+                    sync_json_category(old_name, "Uncategorized")
             else:
                 logger.warning(f"Category {category_id} not found for deletion")
             return success
@@ -105,7 +121,10 @@ def create_product(
             (product_name, sell_price, buy_price,
              category_id, stock, stock_storage, description),
         )
-        return cur.lastrowid
+        product_id = cur.lastrowid
+
+    update_json_product(product_id)
+    return product_id
 
 
 def get_product(product_id: int) -> dict | None:
@@ -149,7 +168,11 @@ def update_product(
             (product_name, sell_price, buy_price,
              category_id, stock, stock_storage, description, product_id),
         )
-        return cur.rowcount > 0
+        success = cur.rowcount > 0
+
+    if success:
+        update_json_product(product_id)
+    return success
 
 
 def delete_product(product_id: int) -> bool:
@@ -158,7 +181,11 @@ def delete_product(product_id: int) -> bool:
         cur = conn.execute(
             "DELETE FROM product WHERE id = ?", (product_id,)
         )
-        return cur.rowcount > 0
+        success = cur.rowcount > 0
+
+    if success:
+        delete_json_product(product_id)
+    return success
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -191,7 +218,9 @@ def add_stock(product_id: int, quantity: int, location: str) -> int:
             "SELECT stock, stock_storage FROM product WHERE id = ?",
             (product_id,),
         ).fetchone()
-        return (row["stock"] + row["stock_storage"]) if row else -1
+
+    update_json_product(product_id)
+    return (row["stock"] + row["stock_storage"]) if row else -1
 
 
 def deduct_stock(product_id: int, quantity: int, location: str) -> bool:
@@ -215,7 +244,9 @@ def deduct_stock(product_id: int, quantity: int, location: str) -> bool:
             f"UPDATE product SET {col} = {col} - ? WHERE id = ?",
             (quantity, product_id),
         )
-        return True
+
+    update_json_product(product_id)
+    return True
 
 
 def check_low_stock(threshold: int) -> list[dict]:

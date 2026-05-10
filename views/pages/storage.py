@@ -152,6 +152,7 @@ class StoragePage(QWidget):
     """Inventory management: searchable product table with low-stock alerts."""
 
     status_msg = pyqtSignal(str)
+    data_changed = pyqtSignal()
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -358,6 +359,7 @@ class StoragePage(QWidget):
             if new_id:
                 self.status_msg.emit(f"Product '{data['product_name']}' berhasil ditambahkan (ID: {new_id})")
                 self._refresh()
+                self.data_changed.emit()
             else:
                 QMessageBox.critical(self, "Error", "Gagal menambahkan product.")
 
@@ -370,6 +372,7 @@ class StoragePage(QWidget):
             if ok:
                 self.status_msg.emit(f"Product '{data['product_name']}' berhasil diperbarui.")
                 self._refresh()
+                self.data_changed.emit()
             else:
                 QMessageBox.critical(self, "Error", "Gagal memperbarui product.")
 
@@ -387,5 +390,6 @@ class StoragePage(QWidget):
             if ok:
                 self.status_msg.emit(f"Product '{product['product_name']}' berhasil dihapus.")
                 self._refresh()
+                self.data_changed.emit()
             else:
                 QMessageBox.critical(self, "Error", "Gagal menghapus product.")

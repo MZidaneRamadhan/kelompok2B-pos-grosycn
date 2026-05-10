@@ -101,6 +101,7 @@ class CategoryProductPage(QWidget):
     """Manajemen category produk dengan tabel dan CRUD inline."""
 
     status_msg = pyqtSignal(str)
+    data_changed = pyqtSignal()
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -227,6 +228,7 @@ class CategoryProductPage(QWidget):
             if new_id:
                 self.status_msg.emit(f"Category '{data['category_name']}' berhasil ditambahkan.")
                 self._refresh()
+                self.data_changed.emit()
             else:
                 QMessageBox.critical(self, "Error", "Gagal menambahkan category.")
 
@@ -238,6 +240,7 @@ class CategoryProductPage(QWidget):
             if ok:
                 self.status_msg.emit(f"Category berhasil diperbarui menjadi '{data['category_name']}'.")
                 self._refresh()
+                self.data_changed.emit()
             else:
                 QMessageBox.critical(self, "Error", "Gagal memperbarui category.")
 
@@ -255,5 +258,6 @@ class CategoryProductPage(QWidget):
             if ok:
                 self.status_msg.emit(f"Category '{category['category']}' berhasil dihapus.")
                 self._refresh()
+                self.data_changed.emit()
             else:
                 QMessageBox.critical(self, "Error", "Gagal menghapus category.")

@@ -85,19 +85,31 @@ class MainWindow(QMainWindow):
         root.addWidget(right)
 
         # ── Pages ─────────────────────────────────────────────────────────────
+        self.dashboard_page = DashboardPage()
+        self.pos_page = POSPage(self.header)
+        self.storage_page = StoragePage()
+        self.category_page = CategoryProductPage()
+        self.suppliers_page = SuppliersPage()
+        self.loyalty_page = LoyaltyPage()
+        self.reports_page = ReportsPage()
+
         self._pages = [
-            DashboardPage(),
-            POSPage(self.header),
-            StoragePage(),
-            CategoryProductPage(),
-            SuppliersPage(),
-            LoyaltyPage(),
-            ReportsPage(),
+            self.dashboard_page,
+            self.pos_page,
+            self.storage_page,
+            self.category_page,
+            self.suppliers_page,
+            self.loyalty_page,
+            self.reports_page,
         ]
         for page in self._pages:
             self.stack.addWidget(page)
             if hasattr(page, "status_msg"):
                 page.status_msg.connect(self._show_status)
+
+        self.storage_page.data_changed.connect(self.pos_page.refresh_products)
+        self.category_page.data_changed.connect(self.pos_page.refresh_products)
+        self.pos_page.transaction_completed.connect(self.reports_page.refresh_data)
 
         # ── Status bar ────────────────────────────────────────────────────────
         self.status_bar = QStatusBar()
@@ -109,6 +121,9 @@ class MainWindow(QMainWindow):
     def _on_page_changed(self, idx: int) -> None:
         self.header.set_title(_PAGE_TITLES[idx])
         self.stack.setCurrentIndex(idx)
+        current_page = self._pages[idx]
+        if hasattr(current_page, "refresh_data"):
+            current_page.refresh_data()
 
     def _toggle_online(self) -> None:
         sync_msg = STATE.toggle_online()

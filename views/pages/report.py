@@ -12,7 +12,7 @@ from PyQt6.QtGui import QColor
 
 from views.styles.theme_manager import make_label, card_style
 from views.styles.palettes import DANGER_FG, WARNING_FG, SUCCESS_FG, BG_SURFACE, BORDER
-from data.store import TRANSACTIONS
+from models import kasir as backend
 
 
 # Foreground colour per transaction status
@@ -48,6 +48,10 @@ class ReportsPage(QWidget):
 
         self._refresh()
 
+    def refresh_data(self) -> None:
+        """Refresh report contents from transaction storage."""
+        self._refresh()
+
     # ── Builder helpers ───────────────────────────────────────────────────────
 
     def _build_filter_card(self) -> QGroupBox:
@@ -60,7 +64,7 @@ class ReportsPage(QWidget):
         # Location
         fl.addWidget(make_label("Location", 11, color="#64748b"), 0, 0)
         self.loc_combo = QComboBox()
-        self.loc_combo.addItems(["All Locations", "Downtown Store", "Mall Location", "Airport Store"])
+        self.loc_combo.addItems(["All Locations"])
         self.loc_combo.currentTextChanged.connect(self._refresh)
         fl.addWidget(self.loc_combo, 1, 0)
 
@@ -109,12 +113,29 @@ class ReportsPage(QWidget):
         pay = self.pay_combo.currentText()
         st  = self.status_combo.currentText()
 
-        rows = [
-            t for t in TRANSACTIONS
-            if (loc == "All Locations" or t["location"] == loc)
-            and (pay == "All Methods"  or t["payment"]  == pay)
-            and (st  == "All Statuses" or t["status"]   == st)
-        ]
+        db_transactions = backend.load_json(backend.FILE_TRANSAKSI)
+
+        rows = []
+        for transaction_id, txn in db_transactions.items():
+            txn_status = str(txn.get("status", "")).lower()
+            txn_payment = str(txn.get("payment_method", txn.get("payment", ""))).lower()
+            txn_location = str(txn.get("location", "All Locations"))
+
+            if loc != "All Locations" and txn_location != loc:
+                continue
+            if pay != "All Methods" and txn_payment != pay.lower():
+                continue
+            if st != "All Statuses" and txn_status != st.lower():
+                continue
+
+            rows.append({
+                "id": transaction_id,
+                "date": txn.get("timestamp", "").split(" ")[0],
+                "time": txn.get("timestamp", "").split(" ")[1] if " " in txn.get("timestamp", "") else "",
+                "total": float(txn.get("total_amount", txn.get("total", 0))),
+                "payment": txn_payment,
+                "status": txn_status,
+            })
 
         self._rebuild_stats(rows)
         self._populate_table(rows)
@@ -130,9 +151,9 @@ class ReportsPage(QWidget):
         avg = total_rev / len(rows) if rows else 0.0
 
         for title, val in [
-            ("Total Revenue", f"${total_rev:.2f}"),
+            ("Total Revenue", f"Rp{total_rev:,.0f}"),
             ("Transactions",  str(len(rows))),
-            ("Avg Order",     f"${avg:.2f}"),
+            ("Avg Order",     f"Rp{avg:,.0f}"),
         ]:
             card = QWidget()
             card.setStyleSheet(card_style() + " min-width:140px;")
@@ -149,7 +170,7 @@ class ReportsPage(QWidget):
             self.table.setItem(r, 0, QTableWidgetItem(t["id"]))
             self.table.setItem(r, 1, QTableWidgetItem(t["date"]))
             self.table.setItem(r, 2, QTableWidgetItem(t["time"]))
-            self.table.setItem(r, 3, QTableWidgetItem(f"${t['total']:.2f}"))
+            self.table.setItem(r, 3, QTableWidgetItem(f"Rp{t['total']:,.0f}"))
             self.table.setItem(r, 4, QTableWidgetItem(t["payment"].capitalize()))
 
             fg = _STATUS_FG.get(t["status"], "#0f172a")

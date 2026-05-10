@@ -2,7 +2,9 @@ import json
 import os
 from datetime import datetime
 
-FILE_BARANG = 'database_barang.json'
+from models.barang_sync import BARANG_FILE, deduct_db_stock_from_product_key
+
+FILE_BARANG = BARANG_FILE
 FILE_TRANSAKSI = 'database_transaksi.json'
 
 def load_json(filename: str) -> dict:
@@ -96,6 +98,7 @@ def create_transaction(order_id: str, customer_name: str, payment_method: str, i
         prod_id = item["product_id"]
         if prod_id in db_products:
             db_products[prod_id]["stock"] -= item["qty"]
+            deduct_db_stock_from_product_key(prod_id, item["qty"])
             
     db_transactions[transaction_id] = {
         "order_id": order_id,
