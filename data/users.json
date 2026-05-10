@@ -1,0 +1,26 @@
+[
+  {
+    "id": "USR-1DAEF941",
+    "name": "Amor Azzam",
+    "email": "admin@gmail.com",
+    "password": "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9",
+    "role_id": 1,
+    "is_active": true
+  },
+  {
+    "id": "USR-599C43A2",
+    "name": "Kasir",
+    "email": "adhiyaganteng@gmail.com",
+    "password": "f02b7c1e519e4fa436147f7e1399974f9510aa9c8e0cb8be29151eb540f9d214",
+    "role_id": 2,
+    "is_active": true
+  },
+  {
+    "id": "USR-2077C7EE",
+    "name": "zidan suplier",
+    "email": "suplier@gmail.com",
+    "password": "78860ee5b05e01872b0edd795dc5e93de86f948e5855f3ab7616d33174bee970",
+    "role_id": 3,
+    "is_active": true
+  }
+]
