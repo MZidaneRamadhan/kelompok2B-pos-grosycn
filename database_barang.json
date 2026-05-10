@@ -1,0 +1,22 @@
+{
+  "PRD-1": {
+    "name": "Minyak Goreng 2L",
+    "sell_price": 35000,
+    "stock": 82
+  },
+  "PRD-2": {
+    "name": "Gula Pasir 1Kg",
+    "sell_price": 15000,
+    "stock": 47
+  },
+  "PRD-3": {
+    "name": "Beras 5Kg",
+    "sell_price": 75000,
+    "stock": 30
+  },
+  "PRD-4": {
+    "name": "Tepung Terigu 1Kg",
+    "sell_price": 12000,
+    "stock": 60
+  }
+}

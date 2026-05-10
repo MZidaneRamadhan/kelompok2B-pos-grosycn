@@ -16,12 +16,11 @@ from views.main_window import MainWindow
 from views.pages.login import LoginDialog
 
 
-def     main() -> None:
+def main() -> None:
     app = QApplication(sys.argv)
     app.setApplicationName("RetailPOS")
     apply_theme(app)
 
-    # Show login dialog first. If user cancels, exit the app.
     dlg = LoginDialog()
     if not dlg.exec():
         return
