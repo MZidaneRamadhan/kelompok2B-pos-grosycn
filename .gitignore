@@ -1,0 +1,9 @@
+<<<<<<< HEAD
+__pycache__/
+=======
+__pycache__/
+*.pyc
+test_product.py
+database/data/categories.json
+database/data/products.json
+>>>>>>> d1f779a561d937035964d2c345d7ac85614fec8b
