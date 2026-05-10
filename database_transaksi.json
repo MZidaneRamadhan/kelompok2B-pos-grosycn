@@ -244,5 +244,27 @@
         "total_amount": 96000.0,
         "timestamp": "2026-05-10 18:20:22",
         "status": "COMPLETED"
+    },
+    "TRX-20260511060952": {
+        "order_id": "ORD-20260511-634",
+        "customer_name": "Pelanggan Umum",
+        "payment_method": "cash",
+        "is_member": false,
+        "items": [
+            {
+                "product_id": "PRD-1",
+                "name": "Sosis",
+                "price": 32000.0,
+                "qty": 4,
+                "subtotal": 128000.0,
+                "image": "\ud83d\udce6",
+                "productName": "Sosis",
+                "unit": "piece",
+                "productId": "PRD-1"
+            }
+        ],
+        "total_amount": 128000.0,
+        "timestamp": "2026-05-11 06:09:52",
+        "status": "COMPLETED"
     }
 }

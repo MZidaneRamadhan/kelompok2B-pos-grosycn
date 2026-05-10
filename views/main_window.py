@@ -95,7 +95,7 @@ class MainWindow(QMainWindow):
         self.storage_page = StoragePage()
         self.category_page = CategoryProductPage()
         self.suppliers_page = SuppliersPage()
-        self.loyalty_page = LoyaltyPage()
+        self.loyalty_page = LoyaltyPage(auth_token=self._auth_token)
         self.reports_page = ReportsPage()
         self.user_mgmt_page = UserManagementPage()
 
