@@ -16,6 +16,7 @@ from views.pages.productcategory import CategoryProductPage
 from views.pages.suppliers import SuppliersPage
 from views.pages.loyalty import LoyaltyPage
 from views.pages.report import ReportsPage
+from views.pages.user_management import UserManagementPage
 from data.state import STATE
 
 
@@ -27,6 +28,7 @@ _PAGE_TITLES = [
     "Supplier Management",
     "Loyalty Program",
     "Reports",
+    "Kelola User",
 ]
 
 
@@ -45,8 +47,10 @@ class MainWindow(QMainWindow):
     StatusBar
     """
 
-    def __init__(self) -> None:
+    def __init__(self, auth_token: str = "", username: str = "") -> None:
         super().__init__()
+        self._auth_token = auth_token
+        self._username   = username
         self.setWindowTitle("RetailPOS – Semi-Online POS System")
         self.resize(1280, 780)
         self.setMinimumSize(1000, 640)
@@ -61,6 +65,7 @@ class MainWindow(QMainWindow):
         # Sidebar
         self.sidebar = Sidebar()
         self.sidebar.page_changed.connect(self._on_page_changed)
+        self.sidebar.logout_requested.connect(self._on_logout)
         root.addWidget(self.sidebar)
 
         # Right column
@@ -92,6 +97,7 @@ class MainWindow(QMainWindow):
         self.suppliers_page = SuppliersPage()
         self.loyalty_page = LoyaltyPage()
         self.reports_page = ReportsPage()
+        self.user_mgmt_page = UserManagementPage()
 
         self._pages = [
             self.dashboard_page,
@@ -101,6 +107,7 @@ class MainWindow(QMainWindow):
             self.suppliers_page,
             self.loyalty_page,
             self.reports_page,
+            self.user_mgmt_page,
         ]
         for page in self._pages:
             self.stack.addWidget(page)
@@ -116,7 +123,59 @@ class MainWindow(QMainWindow):
         self.setStatusBar(self.status_bar)
         self._show_status("RetailPOS ready")
 
-    # ── Slots ─────────────────────────────────────────────────────────────────
+        # Populate sidebar user info and apply RBAC restrictions
+        if self._username:
+            self._refresh_user_display()
+        self._apply_permissions()
+
+    def _refresh_user_display(self) -> None:
+        """Update sidebar with current user name and role label."""
+        try:
+            from models import user_model
+            user_id = user_model.get_user_id_by_token(self._auth_token)
+            user    = user_model.get_user(user_id) if user_id else {}
+            role_map = {1: "Admin", 2: "Kasir", 3: "Stok Manager"}
+            role_label = role_map.get(int(user.get("role_id", 0)), "—")
+            display_name = user.get("name", self._username) or self._username
+        except Exception:
+            display_name = self._username
+            role_label   = ""
+        self.sidebar.set_user(display_name, role_label)
+
+    def _apply_permissions(self) -> None:
+        """Fetch the user's allowed features and restrict sidebar navigation."""
+        try:
+            from controllers import user_controller
+            allowed = user_controller.get_allowed_features(self._auth_token)
+        except Exception:
+            allowed = []   # deny all on error (fail-safe)
+        self.sidebar.apply_permissions(allowed)
+        # Give user_mgmt_page the token so it can make authenticated calls
+        self.user_mgmt_page.set_auth_token(self._auth_token)
+
+    def _on_logout(self) -> None:
+        """Invalidate session, close window, re-open LoginDialog."""
+        try:
+            from controllers import user_controller
+            user_controller.logout(self._auth_token)
+        except Exception:
+            pass  # always proceed even if token was already gone
+
+        self.close()
+
+        from views.pages.login import LoginDialog
+        dlg = LoginDialog()
+        if dlg.exec():
+            win = MainWindow(
+                auth_token=dlg.auth_token or "",
+                username=dlg.username or "",
+            )
+            win.show()
+            # Keep a reference so the GC doesn't destroy it
+            import sys
+            # Attach to the QApplication instance to stay alive
+            from PyQt6.QtWidgets import QApplication
+            QApplication.instance()._main_win = win  # type: ignore[attr-defined]
 
     def _on_page_changed(self, idx: int) -> None:
         self.header.set_title(_PAGE_TITLES[idx])
