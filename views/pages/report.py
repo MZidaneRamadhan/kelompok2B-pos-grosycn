@@ -12,7 +12,7 @@ from PyQt6.QtGui import QColor
 
 from views.styles.theme_manager import make_label, card_style
 from views.styles.palettes import DANGER_FG, WARNING_FG, SUCCESS_FG, BG_SURFACE, BORDER
-from models import kasir as backend
+from database import TransactionRepository
 
 
 # Foreground colour per transaction status
@@ -49,7 +49,7 @@ class ReportsPage(QWidget):
         self._refresh()
 
     def refresh_data(self) -> None:
-        """Refresh report contents from transaction storage."""
+        """Refresh report contents from SQLite."""
         self._refresh()
 
     # ── Builder helpers ───────────────────────────────────────────────────────
@@ -61,26 +61,19 @@ class ReportsPage(QWidget):
         )
         fl = QGridLayout(grp)
 
-        # Location
-        fl.addWidget(make_label("Location", 11, color="#64748b"), 0, 0)
-        self.loc_combo = QComboBox()
-        self.loc_combo.addItems(["All Locations"])
-        self.loc_combo.currentTextChanged.connect(self._refresh)
-        fl.addWidget(self.loc_combo, 1, 0)
-
         # Payment method
-        fl.addWidget(make_label("Payment Method", 11, color="#64748b"), 0, 1)
+        fl.addWidget(make_label("Payment Method", 11, color="#64748b"), 0, 0)
         self.pay_combo = QComboBox()
-        self.pay_combo.addItems(["All Methods", "card", "cash", "mobile"])
+        self.pay_combo.addItems(["All Methods", "card", "cash", "mobile", "qris", "transfer"])
         self.pay_combo.currentTextChanged.connect(self._refresh)
-        fl.addWidget(self.pay_combo, 1, 1)
+        fl.addWidget(self.pay_combo, 1, 0)
 
-        # Status
-        fl.addWidget(make_label("Status", 11, color="#64748b"), 0, 2)
-        self.status_combo = QComboBox()
-        self.status_combo.addItems(["All Statuses", "completed", "refunded", "pending"])
-        self.status_combo.currentTextChanged.connect(self._refresh)
-        fl.addWidget(self.status_combo, 1, 2)
+        # Member filter
+        fl.addWidget(make_label("Customer Type", 11, color="#64748b"), 0, 1)
+        self.member_combo = QComboBox()
+        self.member_combo.addItems(["All", "Member", "Non-Member"])
+        self.member_combo.currentTextChanged.connect(self._refresh)
+        fl.addWidget(self.member_combo, 1, 1)
 
         # Export buttons
         export_row = QHBoxLayout()
@@ -90,15 +83,15 @@ class ReportsPage(QWidget):
             btn.clicked.connect(lambda _, f=fmt: self.status_msg.emit(f"Exporting as {f}…"))
             export_row.addWidget(btn)
         export_row.addStretch()
-        fl.addLayout(export_row, 2, 0, 1, 3)
+        fl.addLayout(export_row, 2, 0, 1, 2)
 
         return grp
 
     def _build_table(self) -> QTableWidget:
         self.table = QTableWidget()
-        self.table.setColumnCount(6)
+        self.table.setColumnCount(7)
         self.table.setHorizontalHeaderLabels(
-            ["Transaction ID", "Date", "Time", "Total", "Payment", "Status"]
+            ["Order ID", "Date", "Time", "Customer", "Total", "Payment", "Member"]
         )
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.table.setAlternatingRowColors(True)
@@ -109,54 +102,68 @@ class ReportsPage(QWidget):
     # ── Data ─────────────────────────────────────────────────────────────────
 
     def _refresh(self) -> None:
-        loc = self.loc_combo.currentText()
-        pay = self.pay_combo.currentText()
-        st  = self.status_combo.currentText()
+        pay    = self.pay_combo.currentText()
+        member = self.member_combo.currentText()
 
-        db_transactions = backend.load_json(backend.FILE_TRANSAKSI)
+        # Ambil semua transaksi dari SQLite via TransactionRepository
+        db_rows = TransactionRepository.get_all()
 
         rows = []
-        for transaction_id, txn in db_transactions.items():
-            txn_status = str(txn.get("status", "")).lower()
-            txn_payment = str(txn.get("payment_method", txn.get("payment", ""))).lower()
-            txn_location = str(txn.get("location", "All Locations"))
+        for row in db_rows:
+            txn = dict(row)
 
-            if loc != "All Locations" and txn_location != loc:
-                continue
+            txn_payment = str(txn.get("payment_method", "")).lower()
+            txn_is_member = bool(txn.get("is_member", 0))
+
+            # Filter payment method
             if pay != "All Methods" and txn_payment != pay.lower():
                 continue
-            if st != "All Statuses" and txn_status != st.lower():
+
+            # Filter member/non-member
+            if member == "Member" and not txn_is_member:
+                continue
+            if member == "Non-Member" and txn_is_member:
                 continue
 
+            # Pisah tanggal dan waktu dari order_date
+            order_date = str(txn.get("order_date", ""))
+            date_part = order_date.split(" ")[0] if " " in order_date else order_date
+            time_part = order_date.split(" ")[1] if " " in order_date else ""
+
             rows.append({
-                "id": transaction_id,
-                "date": txn.get("timestamp", "").split(" ")[0],
-                "time": txn.get("timestamp", "").split(" ")[1] if " " in txn.get("timestamp", "") else "",
-                "total": float(txn.get("total_amount", txn.get("total", 0))),
-                "payment": txn_payment,
-                "status": txn_status,
+                "order_id":      txn.get("order_id", ""),
+                "date":          date_part,
+                "time":          time_part,
+                "customer_name": txn.get("customer_name") or "-",
+                "total":         float(txn.get("total", 0)),
+                "payment":       txn_payment,
+                "is_member":     txn_is_member,
+                "cashier":       txn.get("cashier", ""),
             })
 
         self._rebuild_stats(rows)
         self._populate_table(rows)
 
     def _rebuild_stats(self, rows: list[dict]) -> None:
-        # Clear previous stat cards
+        # Bersihkan stat cards sebelumnya
         while self.stats_row.count():
             item = self.stats_row.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
 
         total_rev = sum(t["total"] for t in rows)
-        avg = total_rev / len(rows) if rows else 0.0
+        avg       = total_rev / len(rows) if rows else 0.0
+        members   = sum(bool(t["is_member"])
+                    for t in rows)
 
         for title, val in [
-            ("Total Revenue", f"Rp{total_rev:,.0f}"),
-            ("Transactions",  str(len(rows))),
-            ("Avg Order",     f"Rp{avg:,.0f}"),
+            ("Total Revenue",  f"Rp{total_rev:,.0f}"),
+            ("Transactions",   str(len(rows))),
+            ("Avg Order",      f"Rp{avg:,.0f}"),
+            ("Member Trx",     str(members)),
         ]:
             card = QWidget()
-            card.setStyleSheet(card_style() + " min-width:140px;")
+            card.setStyleSheet(f"{card_style()} min-width:140px;")
             cv = QVBoxLayout(card)
             cv.addWidget(make_label(title, 11, color="#64748b"))
             cv.addWidget(make_label(val, 18, bold=True))
@@ -167,13 +174,14 @@ class ReportsPage(QWidget):
     def _populate_table(self, rows: list[dict]) -> None:
         self.table.setRowCount(len(rows))
         for r, t in enumerate(rows):
-            self.table.setItem(r, 0, QTableWidgetItem(t["id"]))
+            self.table.setItem(r, 0, QTableWidgetItem(t["order_id"]))
             self.table.setItem(r, 1, QTableWidgetItem(t["date"]))
             self.table.setItem(r, 2, QTableWidgetItem(t["time"]))
-            self.table.setItem(r, 3, QTableWidgetItem(f"Rp{t['total']:,.0f}"))
-            self.table.setItem(r, 4, QTableWidgetItem(t["payment"].capitalize()))
+            self.table.setItem(r, 3, QTableWidgetItem(t["customer_name"]))
+            self.table.setItem(r, 4, QTableWidgetItem(f"Rp{t['total']:,.0f}"))
+            self.table.setItem(r, 5, QTableWidgetItem(t["payment"].capitalize()))
 
-            fg = _STATUS_FG.get(t["status"], "#0f172a")
-            status_item = QTableWidgetItem(t["status"].capitalize())
-            status_item.setForeground(QColor(fg))
-            self.table.setItem(r, 5, status_item)
+            member_label = "✅ Member" if t["is_member"] else "—"
+            member_item  = QTableWidgetItem(member_label)
+            member_item.setForeground(QColor(SUCCESS_FG if t["is_member"] else "#94a3b8"))
+            self.table.setItem(r, 6, member_item)

@@ -17,9 +17,7 @@ from database import get_connection
 
 def _row_to_dict(row: sqlite3.Row | None) -> dict:
     """Konversi sqlite3.Row ke dict. Return {} jika None."""
-    if row is None:
-        return {}
-    return dict(row)
+    return {} if row is None else dict(row)
 
 
 def _rows_to_list(rows: list) -> list[dict]:
@@ -67,14 +65,14 @@ def create(
             """,
             {
                 "supplier_name": supplier_name,
-                "email":         email or None,
-                "number":        phone or None,
-                "rating":        float(rating),
-                "source_data":   final_source,
-                "place_id":      final_place,
-                "lat":           float(lat),
-                "lng":           float(lng),
-                "alamat":        address or None,
+                "email": email or None,
+                "number": phone or None,
+                "rating": rating,
+                "source_data": final_source,
+                "place_id": final_place,
+                "lat": lat,
+                "lng": lng,
+                "alamat": address or None,
             },
         )
         return cur.lastrowid                            # -> int

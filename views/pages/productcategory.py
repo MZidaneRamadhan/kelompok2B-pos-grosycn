@@ -153,8 +153,8 @@ class CategoryProductPage(QWidget):
         hh.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         hh.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
 
-        self.table.setColumnWidth(0, 60)
-        self.table.setColumnWidth(2, 160)
+        self.table.setColumnWidth(0, 50)
+        self.table.setColumnWidth(2, 220)
 
         self.table.setAlternatingRowColors(True)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)

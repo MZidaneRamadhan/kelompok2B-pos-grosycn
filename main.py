@@ -11,7 +11,6 @@ import sys
 
 from PyQt6.QtWidgets import QApplication
 
-from controllers.barang_controller import sync_json_from_db
 from database import init_db
 from views.styles.theme_manager import apply_theme
 from views.main_window import MainWindow
@@ -21,7 +20,6 @@ from views.pages.login import LoginDialog
 def main() -> None:
     # Initialize database at app startup
     init_db()
-    sync_json_from_db()
 
     app = QApplication(sys.argv)
     app.setApplicationName("RetailPOS")

@@ -244,5 +244,115 @@
         "total_amount": 96000.0,
         "timestamp": "2026-05-10 18:20:22",
         "status": "COMPLETED"
+    },
+    "TRX-20260510193934": {
+        "order_id": "ORD-20260510-263",
+        "customer_name": "Pelanggan Umum",
+        "payment_method": "cash",
+        "is_member": false,
+        "items": [
+            {
+                "product_id": "PRD-1",
+                "name": "Sosis",
+                "price": 32000.0,
+                "qty": 1,
+                "subtotal": 32000.0,
+                "image": "\ud83d\udce6",
+                "productName": "Sosis",
+                "unit": "piece",
+                "productId": "PRD-1"
+            }
+        ],
+        "total_amount": 32000.0,
+        "timestamp": "2026-05-10 19:39:34",
+        "status": "COMPLETED"
+    },
+    "TRX-20260510193952": {
+        "order_id": "ORD-20260510-729",
+        "customer_name": "Pelanggan Umum",
+        "payment_method": "cash",
+        "is_member": false,
+        "items": [
+            {
+                "product_id": "PRD-1",
+                "name": "Sosis",
+                "price": 32000.0,
+                "qty": 1,
+                "subtotal": 32000.0,
+                "image": "\ud83d\udce6",
+                "productName": "Sosis",
+                "unit": "piece",
+                "productId": "PRD-1"
+            }
+        ],
+        "total_amount": 32000.0,
+        "timestamp": "2026-05-10 19:39:52",
+        "status": "COMPLETED"
+    },
+    "TRX-20260510200514": {
+        "order_id": "ORD-20260510-763",
+        "customer_name": "Pelanggan Umum",
+        "payment_method": "card",
+        "is_member": false,
+        "items": [
+            {
+                "product_id": "PRD-7",
+                "name": "baso",
+                "price": 5123123.0,
+                "qty": 1,
+                "subtotal": 5123123.0,
+                "image": "\ud83d\udce6",
+                "productName": "baso",
+                "unit": "piece",
+                "productId": "PRD-7"
+            },
+            {
+                "product_id": "PRD-4",
+                "name": "Minyak Owo",
+                "price": 42000.0,
+                "qty": 1,
+                "subtotal": 42000.0,
+                "image": "\ud83d\udce6",
+                "productName": "Minyak Owo",
+                "unit": "piece",
+                "productId": "PRD-4"
+            },
+            {
+                "product_id": "PRD-3",
+                "name": "Sosis A",
+                "price": 30000.0,
+                "qty": 1,
+                "subtotal": 30000.0,
+                "image": "\ud83d\udce6",
+                "productName": "Sosis A",
+                "unit": "piece",
+                "productId": "PRD-3"
+            },
+            {
+                "product_id": "PRD-1",
+                "name": "Sosis",
+                "price": 32000.0,
+                "qty": 1,
+                "subtotal": 32000.0,
+                "image": "\ud83d\udce6",
+                "productName": "Sosis",
+                "unit": "piece",
+                "productId": "PRD-1"
+            },
+            {
+                "product_id": "PRD-6",
+                "name": "SIOMAY",
+                "price": 5000.0,
+                "qty": 1,
+                "subtotal": 5000.0,
+                "image": "\ud83d\udce6",
+                "productName": "SIOMAY",
+                "unit": "piece",
+                "productId": "PRD-6"
+            }
+        ],
+        "total_amount": 5232123.0,
+        "timestamp": "2026-05-10 20:05:14",
+        "status": "COMPLETED"
     }
 }
