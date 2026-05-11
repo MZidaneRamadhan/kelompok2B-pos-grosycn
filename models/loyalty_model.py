@@ -1,4 +1,3 @@
-import json
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -21,6 +20,7 @@ POINT_VALUE      = 100        # Rp per 1 poin
 MAX_REDEEM_RATE  = 0.20       # Maksimal 20% dari subtotal boleh dibayar pakai poin
 POINT_EARN_RATE  = 0.01       # 1% dari total belanja → poin (1% belanja = poin, 1 poin = Rp 100)
 
+from database import get_connection
 
 def _load() -> list[dict]:
     """Baca semua data member dari file JSON."""
@@ -139,10 +139,10 @@ def apply_point_discount(subtotal: float, points_to_redeem: int, points_owned: i
 
 
 # ── CRUD ───────────────────────────────────────────────────────────────────────
+def _row_to_dict(row):
+    return dict(row) if row else None
 
 def create_member(name: str, email: str, phone: str) -> str:
-    """[CREATE] Simpan pelanggan baru dengan stats awal (0)."""
-    members = _load()
     member_id = f"MBR-{str(uuid.uuid4())[:6].upper()}"
     members.append({
         "id":        member_id,
@@ -157,6 +157,13 @@ def create_member(name: str, email: str, phone: str) -> str:
         "is_active": True,
     })
     _save(members)
+    join_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    with get_connection() as conn:
+        conn.execute('''
+            INSERT INTO member (id, member_name, email, phone, tier, total_point, spent, visits, join_date, is_active)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (member_id, name, email, phone, "Bronze", 0, 0.0, 0, join_date, 1))
     return member_id
 
 
@@ -166,6 +173,14 @@ def get_member(member_id: str) -> dict:
         if m["id"] == member_id:
             return m
     return {}
+    with get_connection() as conn:
+        row = conn.execute("SELECT * FROM member WHERE id = ?", (member_id,)).fetchone()
+        if not row: return None
+        # Ubah nama kolom agar cocok dengan format UI loyalty.py
+        d = dict(row)
+        d["name"] = d["member_name"]
+        d["points"] = d["total_point"]
+        return d
 
 
 def find_member_by_contact(identifier: str) -> dict:
@@ -178,8 +193,16 @@ def find_member_by_contact(identifier: str) -> dict:
 
 
 def get_all_members() -> list[dict]:
-    """[READ] Ambil semua pelanggan."""
-    return _load()
+    with get_connection() as conn:
+        rows = conn.execute("SELECT * FROM member").fetchall()
+        result = []
+        for r in rows:
+            d = dict(r)
+            # Ubah nama kolom agar cocok dengan format UI loyalty.py
+            d["name"] = d["member_name"]
+            d["points"] = d["total_point"]
+            result.append(d)
+        return result
 
 
 def update_member(member_id: str, name: str, email: str, phone: str) -> bool:
@@ -193,6 +216,13 @@ def update_member(member_id: str, name: str, email: str, phone: str) -> bool:
             _save(members)
             return True
     return False
+    with get_connection() as conn:
+        result = conn.execute('''
+            UPDATE member 
+            SET member_name = ?, email = ?, phone = ? 
+            WHERE id = ?
+        ''', (name, email, phone, member_id))
+        return result.rowcount > 0
 
 
 def update_loyalty_stats(
@@ -219,6 +249,17 @@ def update_loyalty_stats(
             _save(members)
             return True
     return False
+def update_loyalty_stats(member_id: str, points_added: int, spent_added: float, new_tier: str) -> bool:
+    with get_connection() as conn:
+        result = conn.execute('''
+            UPDATE member 
+            SET total_point = total_point + ?, 
+                spent = spent + ?, 
+                visits = visits + 1, 
+                tier = ? 
+            WHERE id = ?
+        ''', (points_added, spent_added, new_tier, member_id))
+        return result.rowcount > 0
 
 
 def deduct_points(member_id: str, points_used: int) -> bool:
@@ -230,6 +271,17 @@ def deduct_points(member_id: str, points_used: int) -> bool:
             _save(members)
             return True
     return False
+    with get_connection() as conn:
+        member = get_member(member_id)
+        if not member or member['points'] < points_used:
+            return False
+            
+        result = conn.execute('''
+            UPDATE member 
+            SET total_point = total_point - ? 
+            WHERE id = ?
+        ''', (points_used, member_id))
+        return result.rowcount > 0
 
 
 def delete_member(member_id: str) -> bool:
@@ -256,3 +308,6 @@ def _row_to_dict(row) -> dict:
         "visits": d.get("visits", 0),
     }
  
+    with get_connection() as conn:
+        result = conn.execute("UPDATE member SET is_active = 0 WHERE id = ?", (member_id,))
+        return result.rowcount > 0
