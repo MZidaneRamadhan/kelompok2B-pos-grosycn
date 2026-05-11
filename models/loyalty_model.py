@@ -1,98 +1,78 @@
-import json
 import uuid
 from datetime import datetime
-from pathlib import Path
+from database import get_connection
 
-DB_PATH = Path("data/members.json")
-
-def _load() -> list[dict]:
-    """Baca semua data member dari file JSON."""
-    if not DB_PATH.exists():
-        return []
-    with open(DB_PATH, "r") as f:
-        return json.load(f)
-
-def _save(data: list[dict]) -> None:
-    """Tulis semua data member ke file JSON."""
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with open(DB_PATH, "w") as f:
-        json.dump(data, f, indent=2)
-
-# ── CRUD ──
+def _row_to_dict(row):
+    return dict(row) if row else None
 
 def create_member(name: str, email: str, phone: str) -> str:
-    """[CREATE] Simpan pelanggan baru dengan stats awal (0)."""
-    members = _load()
     member_id = f"MBR-{str(uuid.uuid4())[:6].upper()}"
+    join_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
-    members.append({
-        "id": member_id,
-        "name": name,
-        "email": email,
-        "phone": phone,
-        "tier": "Bronze",       # Level awal default
-        "points": 0,            # Poin awal
-        "spent": 0.0,           # Total belanja
-        "visits": 0,            # Jumlah transaksi/kunjungan
-        "join": datetime.now().strftime('%Y-%m-%d'),
-        "is_active": True       # Untuk soft-delete
-    })
-    
-    _save(members)
+    with get_connection() as conn:
+        conn.execute('''
+            INSERT INTO member (id, member_name, email, phone, tier, total_point, spent, visits, join_date, is_active)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (member_id, name, email, phone, "Bronze", 0, 0.0, 0, join_date, 1))
     return member_id
 
 def get_member(member_id: str) -> dict:
-    """[READ] Ambil data satu pelanggan."""
-    for m in _load():
-        if m["id"] == member_id:
-            return m
-    return {}
+    with get_connection() as conn:
+        row = conn.execute("SELECT * FROM member WHERE id = ?", (member_id,)).fetchone()
+        if not row: return None
+        # Ubah nama kolom agar cocok dengan format UI loyalty.py
+        d = dict(row)
+        d["name"] = d["member_name"]
+        d["points"] = d["total_point"]
+        return d
 
 def get_all_members() -> list[dict]:
-    """[READ] Ambil semua pelanggan."""
-    return _load()
+    with get_connection() as conn:
+        rows = conn.execute("SELECT * FROM member").fetchall()
+        result = []
+        for r in rows:
+            d = dict(r)
+            # Ubah nama kolom agar cocok dengan format UI loyalty.py
+            d["name"] = d["member_name"]
+            d["points"] = d["total_point"]
+            result.append(d)
+        return result
 
 def update_member(member_id: str, name: str, email: str, phone: str) -> bool:
-    """[UPDATE] Perbarui kontak pelanggan."""
-    members = _load()
-    for m in members:
-        if m["id"] == member_id:
-            m["name"] = name
-            m["email"] = email
-            m["phone"] = phone
-            _save(members)
-            return True
-    return False
+    with get_connection() as conn:
+        result = conn.execute('''
+            UPDATE member 
+            SET member_name = ?, email = ?, phone = ? 
+            WHERE id = ?
+        ''', (name, email, phone, member_id))
+        return result.rowcount > 0
 
 def update_loyalty_stats(member_id: str, points_added: int, spent_added: float, new_tier: str) -> bool:
-    """[UPDATE] Menambah poin, belanja, kunjungan, dan update tier."""
-    members = _load()
-    for m in members:
-        if m["id"] == member_id:
-            m["points"] += points_added
-            m["spent"] += spent_added
-            m["visits"] += 1
-            m["tier"] = new_tier
-            _save(members)
-            return True
-    return False
+    with get_connection() as conn:
+        result = conn.execute('''
+            UPDATE member 
+            SET total_point = total_point + ?, 
+                spent = spent + ?, 
+                visits = visits + 1, 
+                tier = ? 
+            WHERE id = ?
+        ''', (points_added, spent_added, new_tier, member_id))
+        return result.rowcount > 0
 
 def deduct_points(member_id: str, points_used: int) -> bool:
-    """[UPDATE] Mengurangi poin saat klaim hadiah (Redeem)."""
-    members = _load()
-    for m in members:
-        if m["id"] == member_id:
-            m["points"] -= points_used
-            _save(members)
-            return True
-    return False
+    with get_connection() as conn:
+        member = get_member(member_id)
+        if not member or member['points'] < points_used:
+            return False
+            
+        result = conn.execute('''
+            UPDATE member 
+            SET total_point = total_point - ? 
+            WHERE id = ?
+        ''', (points_used, member_id))
+        return result.rowcount > 0
 
 def delete_member(member_id: str) -> bool:
-    """[DELETE] Soft delete pelanggan."""
-    members = _load()
-    for m in members:
-        if m["id"] == member_id:
-            m["is_active"] = False
-            _save(members)
-            return True
-    return False
+    with get_connection() as conn:
+        result = conn.execute("UPDATE member SET is_active = 0 WHERE id = ?", (member_id,))
+        return result.rowcount > 0
