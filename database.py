@@ -81,11 +81,16 @@ CREATE TABLE IF NOT EXISTS product (
 -- MEMBER
 -- ══════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS member (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    id              TEXT PRIMARY KEY,
     member_name     TEXT    NOT NULL,
     email           TEXT,
-    phone           TEXT,
-    total_point     INTEGER NOT NULL DEFAULT 0
+    phone           TEXT    UNIQUE,
+    tier            TEXT    DEFAULT 'Bronze',
+    total_point     INTEGER DEFAULT 0,
+    spent           REAL    DEFAULT 0.0,
+    visits          INTEGER DEFAULT 0,
+    join_date       TEXT    NOT NULL,
+    is_active       INTEGER DEFAULT 1
 );
  
 -- ══════════════════════════════════════════
