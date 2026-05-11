@@ -1,0 +1,30 @@
+[
+  {
+    "id": "R001",
+    "name": "Free Espresso",
+    "desc": "Redeem for one free espresso",
+    "cost": 200,
+    "cat": "Free Item"
+  },
+  {
+    "id": "R002",
+    "name": "10% Off Next Purchase",
+    "desc": "10% off your entire next order",
+    "cost": 150,
+    "cat": "Discount"
+  },
+  {
+    "id": "R003",
+    "name": "Free Pastry",
+    "desc": "Choose any pastry from our selection",
+    "cost": 250,
+    "cat": "Free Item"
+  },
+  {
+    "id": "R004",
+    "name": "Buy One Get One",
+    "desc": "BOGO on any beverage",
+    "cost": 500,
+    "cat": "Special Offer"
+  }
+]
