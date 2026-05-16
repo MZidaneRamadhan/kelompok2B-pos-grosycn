@@ -1,4 +1,3 @@
-import json
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -141,8 +140,6 @@ def apply_point_discount(subtotal: float, points_to_redeem: int, points_owned: i
 # ── CRUD ───────────────────────────────────────────────────────────────────────
 
 def create_member(name: str, email: str, phone: str) -> str:
-    """[CREATE] Simpan pelanggan baru dengan stats awal (0)."""
-    members = _load()
     member_id = f"MBR-{str(uuid.uuid4())[:6].upper()}"
     members.append({
         "id":        member_id,

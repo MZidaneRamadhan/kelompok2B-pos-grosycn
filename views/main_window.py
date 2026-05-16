@@ -91,11 +91,11 @@ class MainWindow(QMainWindow):
 
         # ── Pages ─────────────────────────────────────────────────────────────
         self.dashboard_page = DashboardPage()
-        self.pos_page = POSPage(self.header)
+        self.pos_page = POSPage(self.header, auth_token=self._auth_token)
         self.storage_page = StoragePage()
         self.category_page = CategoryProductPage()
         self.suppliers_page = SuppliersPage()
-        self.loyalty_page = LoyaltyPage()
+        self.loyalty_page = LoyaltyPage(auth_token=self._auth_token)
         self.reports_page = ReportsPage()
         self.user_mgmt_page = UserManagementPage()
 
@@ -117,6 +117,7 @@ class MainWindow(QMainWindow):
         self.storage_page.data_changed.connect(self.pos_page.refresh_products)
         self.category_page.data_changed.connect(self.pos_page.refresh_products)
         self.pos_page.transaction_completed.connect(self.reports_page.refresh_data)
+        self.pos_page.transaction_completed.connect(self.loyalty_page.refresh_data)
 
         # ── Status bar ────────────────────────────────────────────────────────
         self.status_bar = QStatusBar()
@@ -152,6 +153,7 @@ class MainWindow(QMainWindow):
         self.sidebar.apply_permissions(allowed)
         # Give user_mgmt_page the token so it can make authenticated calls
         self.user_mgmt_page.set_auth_token(self._auth_token)
+        self.pos_page.set_auth_token(self._auth_token)
 
     def _on_logout(self) -> None:
         """Invalidate session, close window, re-open LoginDialog."""

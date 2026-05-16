@@ -1,5 +1,5 @@
 from models import loyalty_model
-from user_controller import requires_permission  # Import gembok keamanan!
+from controllers.user_controller import requires_permission  # Add 'controllers.' here!
 
 # --- LOGIKA BISNIS INTERNAL ---
 
