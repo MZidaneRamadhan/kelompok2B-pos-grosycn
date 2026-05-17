@@ -3,12 +3,12 @@
         "name": "Sosis",
         "sell_price": 32000.0,
         "buy_price": 20000.0,
-        "stock": 3,
+        "stock": 12,
         "stock_storage": 15,
         "category": "Frozen Food",
         "sku": "SKU-1",
         "brand": "",
-        "image": "\u00f0\u0178\u201c\u00a6",
+        "image": "📦",
         "low": 5,
         "description": "-",
         "pricing": [
@@ -28,7 +28,7 @@
         "category": "Frozen Food",
         "sku": "SKU-3",
         "brand": "",
-        "image": "\u00f0\u0178\u201c\u00a6",
+        "image": "📦",
         "low": 5,
         "description": "",
         "pricing": [
@@ -43,12 +43,12 @@
         "name": "Minyak Owo",
         "sell_price": 42000.0,
         "buy_price": 39000.0,
-        "stock": 8,
+        "stock": 10,
         "stock_storage": 40,
         "category": "Minyak Goreng",
         "sku": "SKU-4",
         "brand": "",
-        "image": "\u00f0\u0178\u201c\u00a6",
+        "image": "📦",
         "low": 5,
         "description": "",
         "pricing": [
@@ -68,7 +68,7 @@
         "category": "Sembako",
         "sku": "SKU-5",
         "brand": "",
-        "image": "\u00f0\u0178\u201c\u00a6",
+        "image": "📦",
         "low": 5,
         "description": "",
         "pricing": [
@@ -83,38 +83,18 @@
         "name": "SIOMAY",
         "sell_price": 5000.0,
         "buy_price": 0.0,
-        "stock": 4,
+        "stock": 5,
         "stock_storage": 9,
         "category": "Sembako",
         "sku": "SKU-6",
         "brand": "",
-        "image": "\u00f0\u0178\u201c\u00a6",
+        "image": "📦",
         "low": 5,
         "description": "",
         "pricing": [
             {
                 "unit": "piece",
                 "price": 5000.0,
-                "qty": 1
-            }
-        ]
-    },
-    "PRD-7": {
-        "name": "baso",
-        "sell_price": 5123123.0,
-        "buy_price": 1000.0,
-        "stock": 96,
-        "stock_storage": 50,
-        "category": "Sembako",
-        "sku": "SKU-7",
-        "brand": "",
-        "image": "\u00f0\u0178\u201c\u00a6",
-        "low": 5,
-        "description": "",
-        "pricing": [
-            {
-                "unit": "piece",
-                "price": 5123123.0,
                 "qty": 1
             }
         ]

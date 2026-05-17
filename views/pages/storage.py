@@ -82,6 +82,10 @@ class ProductDialog(QDialog):
         form.addRow("Deskripsi:", self.desc_input)
 
         lay.addLayout(form)
+        self._error_lbl = QLabel()
+        self._error_lbl.setStyleSheet("color: #DC2626; font-size: 13px; font-weight: 600;")
+        self._error_lbl.hide()
+        lay.addWidget(self._error_lbl)
 
         # ── Buttons ───────────────────────────────────────────────────────────
         btns = QDialogButtonBox(
@@ -120,13 +124,28 @@ class ProductDialog(QDialog):
                 break
 
     def _on_accept(self) -> None:
-        """Validasi input sebelum menutup dialog."""
+        # Reset dulu
+        self.sell_price_input.setStyleSheet("")
+        self.buy_price_input.setStyleSheet("")
+        self._error_lbl.hide()
+
         if not self.name_input.text().strip():
-            QMessageBox.warning(self, "Validasi", "Nama product tidak boleh kosong.")
+            self.name_input.setStyleSheet("border: 2px solid red; border-radius: 4px;")
             return
+
         if self.sell_price_input.value() <= 0:
-            QMessageBox.warning(self, "Validasi", "Harga jual harus lebih dari 0.")
+            self.sell_price_input.setStyleSheet("border: 2px solid red; border-radius: 4px;")
+            self._error_lbl.setText("⚠️ Harga jual harus lebih dari 0")
+            self._error_lbl.show()
             return
+
+        if self.sell_price_input.value() < self.buy_price_input.value():
+            self.sell_price_input.setStyleSheet("border: 2px solid red; border-radius: 4px;")
+            self.buy_price_input.setStyleSheet("border: 2px solid red; border-radius: 4px;")
+            self._error_lbl.setText("⚠️ Harga jual tidak boleh lebih kecil dari harga beli!")
+            self._error_lbl.show()
+            return
+
         self.accept()
 
     # ── Getter hasil form ──────────────────────────────────────────────────────
