@@ -235,13 +235,13 @@ def get_recent_transactions(limit: int = 5) -> list[dict]:
 
 def get_top_members(limit: int = 5) -> list[dict]:
     """
-    N member dengan total belanja tertinggi berdasarkan kolom total_spent
+    N member dengan total belanja tertinggi berdasarkan kolom spent
     di tabel member (diperbarui oleh loyalty_model).
 
-    Fallback ke JOIN transaksi jika total_spent = 0 (data lama).
+    Fallback ke JOIN transaksi jika spent = 0 (data lama).
 
     Return:
-        [{"member_name", "total_spent", "visit_count", "total_point"}, ...]
+        [{"member_name", "spent", "visit_count", "total_point"}, ...]
     """
     with get_connection() as conn:
         rows = conn.execute(
@@ -249,10 +249,10 @@ def get_top_members(limit: int = 5) -> list[dict]:
             SELECT
                 m.member_name,
                 m.total_point,
-                -- Prioritaskan kolom total_spent di tabel member;
+                -- Prioritaskan kolom spent di tabel member;
                 -- jika 0, hitung ulang dari transaksi sebagai fallback
                 CASE
-                    WHEN m.total_spent > 0 THEN m.total_spent
+                    WHEN m.spent > 0 THEN m.spent
                     ELSE COALESCE(
                         (SELECT SUM(t.total)
                          FROM [transaction] t
@@ -260,7 +260,7 @@ def get_top_members(limit: int = 5) -> list[dict]:
                            AND t.is_member = 1),
                         0
                     )
-                END AS total_spent,
+                END AS spent,
                 COALESCE(
                     (SELECT COUNT(t.id)
                      FROM [transaction] t
@@ -269,7 +269,7 @@ def get_top_members(limit: int = 5) -> list[dict]:
                     0
                 ) AS visit_count
             FROM member m
-            ORDER BY total_spent DESC
+            ORDER BY spent DESC
             LIMIT ?
             """,
             (limit,),

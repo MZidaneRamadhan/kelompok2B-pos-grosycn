@@ -218,21 +218,25 @@ class RedeemDialog(QDialog):
         if not identifier:
             return
         try:
-            member = loyalty_controller.verify_member(self._auth_token, identifier)
-            self._member = member
-            self._b_name.setText(member["name"])
-            self._b_pts.setText(f"{member.get('points', 0):,} pts")
-            self._banner.show()
-            can_redeem = member.get("points", 0) >= self._reward["cost"]
-            self._redeem_btn.setEnabled(can_redeem)
-            if not can_redeem:
-                self._err.setText(
-                    f"Poin tidak cukup. Butuh {self._reward['cost']:,}, "
-                    f"punya {member.get('points', 0):,}."
-                )
-                self._err.show()
+            self._extracted_from__lookup_9(identifier)
         except ValueError as e:
             self._err.setText(str(e))
+            self._err.show()
+
+    # TODO Rename this here and in `_lookup`
+    def _extracted_from__lookup_9(self, identifier):
+        member = loyalty_controller.verify_member(self._auth_token, identifier)
+        self._member = member
+        self._b_name.setText(member["name"])
+        self._b_pts.setText(f"{member.get('points', 0):,} pts")
+        self._banner.show()
+        can_redeem = member.get("points", 0) >= self._reward["cost"]
+        self._redeem_btn.setEnabled(can_redeem)
+        if not can_redeem:
+            self._err.setText(
+                f"Poin tidak cukup. Butuh {self._reward['cost']:,}, "
+                f"punya {member.get('points', 0):,}."
+            )
             self._err.show()
 
     def _on_redeem(self) -> None:
@@ -331,12 +335,12 @@ class LoyaltyPage(QWidget):
         all_members    = loyalty_model.get_all_members()
         active_members = [m for m in all_members if m.get("is_active", True)]
         total_pts      = sum(m["points"] for m in active_members)
-        total_spent    = sum(m["spent"]  for m in active_members)
+        spent    = sum(m["spent"]  for m in active_members)
         rewards        = _load_rewards()
 
         self._stat_cards["members"].setText(str(len(active_members)))
         self._stat_cards["points"].setText(f"{total_pts:,}")
-        self._stat_cards["spent"].setText(f"Rp{total_spent:,.0f}")
+        self._stat_cards["spent"].setText(f"Rp{spent:,.0f}")
         self._stat_cards["rewards"].setText(str(len(rewards)))
 
     # ── Customers tab ─────────────────────────────────────────────────────────

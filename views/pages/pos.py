@@ -22,6 +22,7 @@ from views.styles.palettes import (
     SUCCESS_BG, SUCCESS_FG, DANGER_FG, WARNING_BG, WARNING_FG,
 )
 from models import kasir as backend
+from database import ProductRepository
 
 
 # ─────────────────────────── Payment Dialog ───────────────────────────────────
@@ -57,7 +58,7 @@ class PaymentDialog(QDialog):
         lay.setSpacing(14)
         lay.setContentsMargins(24, 24, 24, 24)
 
-        lay.addWidget(make_label("Selesaikan Pembayaran", 16, bold=True))
+        lay.addWidget(make_label("Complete Payment", 16, bold=True))
         lay.addWidget(h_line())
 
         # ── Payment method ────────────────────────────────────────────────────
@@ -65,8 +66,9 @@ class PaymentDialog(QDialog):
 
         methods_row = QHBoxLayout()
         self._pay_btns: dict[str, QPushButton] = {}
-        for method, label in [("card", "💳\nKartu"), ("cash", "💵\nTunai"), ("mobile", "📱\nMobile")]:
+        for method, label in [("card", "💳\nCard"), ("cash", "💵\nCash"), ("mobile", "📱\nMobile")]:
             btn = QPushButton(label)
+            btn.setObjectName("payMethodBtn")
             btn.setFixedHeight(70)
             btn.clicked.connect(lambda _, m=method: self._set_method(m))
             self._pay_btns[method] = btn
@@ -143,7 +145,7 @@ class PaymentDialog(QDialog):
         total_row = QHBoxLayout()
         total_row.addWidget(make_label("Total", 16, bold=True))
         total_row.addStretch()
-        total_row.addWidget(make_label(f"Rp{final_total:,.0f}", 18, bold=True, color=PRIMARY))
+        total_row.addWidget(make_label(f"Rp{total:.0f}", 18, bold=True, color=PRIMARY))
         lay.addLayout(total_row)
 
         # ── Points preview ────────────────────────────────────────────────────
@@ -165,13 +167,6 @@ class PaymentDialog(QDialog):
         btns.addButton(cancel_btn, QDialogButtonBox.ButtonRole.RejectRole)
         btns.addButton(pay_btn,    QDialogButtonBox.ButtonRole.AcceptRole)
         cancel_btn.clicked.connect(self.reject)
-
-        pay_btn = QPushButton("✓  Bayar Sekarang")
-        pay_btn.setStyleSheet(
-            f"QPushButton {{ background:{PRIMARY}; color:#fff; border:none;"
-            f" border-radius:6px; padding:8px 24px; font-weight:700; font-size:13px; }}"
-            f"QPushButton:hover {{ background:#4338ca; }}"
-        )
         pay_btn.clicked.connect(self.accept)
         lay.addWidget(btns)
 
@@ -190,42 +185,6 @@ class PaymentDialog(QDialog):
                     f"background:transparent; color:{TEXT_PRIMARY}; border-radius:10px;"
                     f" padding:12px 8px; font-size:13px; border:1px solid {BORDER};"
                 )
-
-    def _lookup_member(self) -> None:
-        identifier = self._member_input.text().strip()
-        if not identifier:
-            return
-        self._member_err.hide()
-        self._member_banner.hide()
-        try:
-            from controllers import loyalty_controller
-            member = loyalty_controller.verify_member(self._auth_token, identifier)
-            self.member_id   = member["id"]
-            self.member_name = member["name"]
-            # Points: 1 per Rp1.000
-            self.member_points = int(self._subtotal // 1000)
-
-            self._banner_name.setText(member["name"])
-            self._banner_tier.setText(f"  •  {member.get('tier', 'Bronze')}")
-            self._banner_pts.setText(f"{member.get('points', 0):,} pts")
-            self._member_banner.show()
-
-            self._pts_preview.setText(
-                f"+{self.member_points} poin akan ditambahkan setelah transaksi ini"
-            )
-            self._pts_preview.show()
-        except ValueError as e:
-            self._member_err.setText(str(e))
-            self._member_err.show()
-
-    def _clear_member(self) -> None:
-        self.member_id     = ""
-        self.member_name   = "Pelanggan Umum"
-        self.member_points = 0
-        self._member_input.clear()
-        self._member_banner.hide()
-        self._member_err.hide()
-        self._pts_preview.hide()
 
     def _lookup_member(self) -> None:
         identifier = self._member_input.text().strip()
@@ -288,31 +247,29 @@ class POSPage(QWidget):
         self._auth_token = auth_token
         self._unit_selections: dict[str, str] = {}
 
-        self.session_id = "KASIR_1"
-        self.cart_id    = f"CART-{self.session_id}"
+        # Keranjang belanja in-memory
+        self._cart: list[dict] = []
+        self.user_id: int = 1  # default; diperbarui via set_auth_token
 
         root = QHBoxLayout(self)
         root.setSpacing(16)
         root.setContentsMargins(0, 0, 0, 0)
 
         root.addLayout(self._build_product_panel(), stretch=2)
-
-        # Cart harus fixed/sticky — bungkus dalam QScrollArea agar tidak ikut scroll product
-        cart_scroll_wrapper = QScrollArea()
-        cart_scroll_wrapper.setWidgetResizable(True)
-        cart_scroll_wrapper.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        cart_scroll_wrapper.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        cart_scroll_wrapper.setFrameShape(cart_scroll_wrapper.Shape.NoFrame)
-        cart_scroll_wrapper.setFixedWidth(316)
-        cart_scroll_wrapper.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
-        cart_scroll_wrapper.setWidget(self._build_cart_panel())
-        root.addWidget(cart_scroll_wrapper, stretch=0)
+        root.addWidget(self._build_cart_panel(), stretch=0)
 
         self._refresh_grid()
         self._refresh_cart()
 
     def set_auth_token(self, token: str) -> None:
         self._auth_token = token
+        try:
+            from models import user_model
+            uid = user_model.get_user_id_by_token(token)
+            if uid:
+                self.user_id = uid
+        except Exception:
+            pass
 
     def refresh_products(self) -> None:
         self._refresh_grid()
@@ -353,7 +310,6 @@ class POSPage(QWidget):
         panel = QWidget()
         panel.setObjectName("cartPanel")
         panel.setFixedWidth(300)
-        panel.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
         panel.setStyleSheet(
             f"QWidget#cartPanel {{ background:{BG_SURFACE}; border:1px solid {BORDER}; border-radius:10px; }}"
         )
@@ -375,8 +331,7 @@ class POSPage(QWidget):
         # Cart items
         self.cart_scroll = QScrollArea()
         self.cart_scroll.setWidgetResizable(True)
-        self.cart_scroll.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self.cart_scroll.setFrameShape(self.cart_scroll.Shape.NoFrame)
+        self.cart_scroll.setMinimumHeight(300)
         self.cart_inner = QWidget()
         self.cart_lay = QVBoxLayout(self.cart_inner)
         self.cart_lay.setSpacing(8)
@@ -414,17 +369,30 @@ class POSPage(QWidget):
 
     def _filtered_products(self) -> list[dict]:
         q = self.search.text().lower()
-        db_products = backend.load_json(backend.FILE_BARANG)
+
+        # ambil produk dari SQLite
+        rows = backend.ProductRepository.get_all()
 
         prods = []
-        for prod_id, p in db_products.items():
-            p["id"] = prod_id
+
+        for row in rows:
+            p = dict(row)
+
+            # mapping field database -> field UI
+            p["id"] = str(p["id"])
+            p["name"] = p.get("product_name", "")
             p.setdefault("image", "📦")
             p.setdefault("low", 5)
-            p.setdefault("sku", prod_id)
+            p.setdefault("sku", p["id"])
             p.setdefault("category", "General")
+
             if "pricing" not in p:
-                p["pricing"] = [{"unit": "piece", "price": p.get("sell_price", 0), "qty": 1}]
+                p["pricing"] = [{
+                    "unit": "piece",
+                    "price": p.get("sell_price", 0),
+                    "qty": 1
+                }]
+
             prods.append(p)
 
         if not q:
@@ -435,28 +403,19 @@ class POSPage(QWidget):
             if q in p["name"].lower()
             or q in p["sku"].lower()
             or q in p["category"].lower()
+            or q in p.get("brand", "").lower()
         ]
 
-    @staticmethod
-    def _row_to_product(row) -> dict:
-        """Konversi sqlite3.Row produk → dict yang dipakai UI."""
-        d = dict(row)
-        return {
-            "id":       d["id"],
-            "name":     d["product_name"],
-            "sku":      f"SKU-{d['id']}",
-            "category": d.get("category", "Umum"),
-            "stock":    d.get("stock", 0),
-            "low":      10,                         # threshold stok rendah
-            "image":    d["product_name"][:1].upper(),
-            "pricing":  [
-                {
-                    "unit":  "piece",
-                    "price": d.get("sell_price", 0),
-                    "qty":   1,
-                }
-            ],
-        }
+    # TODO Rename this here and in `_filtered_products`
+    def _extracted_from__filtered_products_7(self, prod_id, p, prods):
+        p["id"] = prod_id
+        p.setdefault("image", "📦")
+        p.setdefault("low", 5)
+        p.setdefault("sku", prod_id)
+        p.setdefault("category", "General")
+        if "pricing" not in p:
+            p["pricing"] = [{"unit": "piece", "price": p.get("sell_price", 0), "qty": 1}]
+        prods.append(p)
 
     def _refresh_grid(self) -> None:
         while self.grid_layout.count():
@@ -574,21 +533,21 @@ class POSPage(QWidget):
 
         for item in self._cart:
             item.setdefault("image", item.get("product_name", "?")[:1].upper())
-            item.setdefault("productName", item.get("product_name", "Unknown"))
+            item.setdefault("productName", item.get("product_name", item.get("name", "Unknown")))
             item.setdefault("unit", "piece")
             item.setdefault("productId", item.get("product_id"))
             self.cart_lay.insertWidget(self.cart_lay.count() - 1, self._cart_row(item))
 
-        subtotal = backend.calculate_subtotal(self.cart_id)
+        subtotal = sum(i["subtotal"] for i in self._cart)
         tax      = subtotal * 0.1
         total    = subtotal + tax
 
-        self.subtotal_lbl.setText(f"Subtotal: Rp{subtotal:.0f}")
-        self.tax_lbl.setText(f"Tax (10%): Rp{tax:.0f}")
-        self.total_lbl.setText(f"Total: Rp{total:.0f}")
+        self.subtotal_lbl.setText(f"Subtotal: Rp{subtotal:,.0f}")
+        self.tax_lbl.setText(f"Tax (10%): Rp{tax:,.0f}")
+        self.total_lbl.setText(f"Total: Rp{total:,.0f}")
 
         # Gray out checkout when empty
-        has_items = bool(cart_items)
+        has_items = bool(self._cart)
         self.checkout_btn.setEnabled(has_items)
         self.checkout_btn.setStyleSheet(
             f"QPushButton {{ background:{ PRIMARY if has_items else '#c7d2fe'};"
@@ -665,37 +624,61 @@ class POSPage(QWidget):
 
         return w
 
-    # TODO Rename this here and in `_cart_row`
-    def _extracted_from__cart_row_24(self, arg0, arg1, arg2):
-        result = QPushButton(arg0)
-        result.setFixedSize(arg1, arg1)
-        result.setStyleSheet(arg2)
-        return result
-
     # ── Actions ───────────────────────────────────────────────────────────────
 
     def _add_to_cart(self, p: dict, unit_combo: QComboBox) -> None:
-        unit = unit_combo.currentData()
-        qty_multiplier = next((pr["qty"] for pr in p["pricing"] if pr["unit"] == unit), 1)
-        backend.add_item_to_cart(self.session_id, p["id"], qty_multiplier)
+        unit    = unit_combo.currentData()
+        pricing = next((pr for pr in p["pricing"] if pr["unit"] == unit), p["pricing"][0])
+        price   = pricing["price"]
+        qty     = pricing["qty"]
+
+        # Cek stok dari SQLite
+        db_row = ProductRepository.get_by_id(p["id"])
+        if not db_row or dict(db_row)["stock"] < qty:
+            self.status_msg.emit(f"⚠ Stok {p['name']} tidak cukup!")
+            return
+
+        # Update qty jika sudah ada di cart
+        for c in self._cart:
+            if c["product_id"] == p["id"] and c["unit"] == unit:
+                new_qty = c["qty"] + qty
+                if dict(db_row)["stock"] < new_qty:
+                    self.status_msg.emit(f"⚠ Stok {p['name']} tidak cukup!")
+                    return
+                c["qty"]     = new_qty
+                c["subtotal"] = price * new_qty
+                self._refresh_cart()
+                self.status_msg.emit(f"{p['name']} ({unit}) diperbarui")
+                return
+
+        # Item baru
+        self._cart.append({
+            "product_id":   p["id"],
+            "product_name": p["name"],
+            "name":         p["name"],
+            "price":        price,
+            "qty":          qty,
+            "unit":         unit,
+            "subtotal":     price * qty,
+            "image":        p.get("image", p["name"][:1].upper()),
+        })
         self._refresh_cart()
         self.status_msg.emit(f"{p['name']} ({unit}) ditambahkan ke keranjang")
 
     def _change_qty(self, item: dict, delta: int) -> None:
-        cart_items = backend.db_carts.get(self.cart_id, [])
-        for c_item in cart_items:
-            if c_item["product_id"] == item["productId"]:
-                new_qty = c_item["qty"] + delta
+        for c in self._cart:
+            if c["product_id"] == item["productId"]:
+                new_qty = c["qty"] + delta
                 if new_qty > 0:
-                    c_item["qty"]      = new_qty
-                    c_item["subtotal"] = c_item["price"] * new_qty
+                    c["qty"]     = new_qty
+                    c["subtotal"] = c["price"] * new_qty
                 else:
                     self._remove(item)
                 break
         self._refresh_cart()
 
     def _remove(self, item: dict) -> None:
-        backend.remove_item_from_cart(self.cart_id, item["product_id"])
+        self._cart = [c for c in self._cart if c["product_id"] != item["product_id"]]
         self._refresh_cart()
 
     def _clear_cart(self) -> None:
@@ -707,7 +690,7 @@ class POSPage(QWidget):
             QMessageBox.information(self, "Keranjang Kosong", "Tambahkan produk sebelum checkout.")
             return
 
-        subtotal = backend.calculate_subtotal(self.cart_id)
+        subtotal = sum(i["subtotal"] for i in self._cart)
         tax      = subtotal * 0.1
         total    = subtotal + tax
 
@@ -715,21 +698,16 @@ class POSPage(QWidget):
         if not dlg.exec():
             return
 
-        payment_status = backend.process_payment(self.cart_id, total, total, dlg.payment_method)
-
-        if not payment_status["status"]:
-            QMessageBox.warning(self, "Payment Failed", payment_status.get("error", "Unknown error"))
-            return
-
-        order_id = f"ORD-{datetime.now().strftime('%Y%m%d')}-{random.randint(1, 999):03d}"
         is_member = bool(dlg.member_id)
 
-        txn_id = backend.create_transaction(
-            order_id=order_id,
-            customer_name=dlg.member_name,
-            payment_method=dlg.payment_method,
-            is_member=is_member,
-            items=cart_items,
+        # ── Simpan transaksi ke SQLite via kasir.create_transaction ──────────
+        trx_id = backend.create_transaction(
+            customer_name  = dlg.member_name,
+            payment_method = dlg.payment_method,
+            is_member      = is_member,
+            user_id        = getattr(self, 'user_id', 1),
+            items          = self._cart,
+            amount_paid    = total,
         )
 
         # ── Award loyalty points if member ────────────────────────────────────
@@ -737,22 +715,21 @@ class POSPage(QWidget):
             try:
                 from controllers import loyalty_controller
                 result = loyalty_controller.add_points_from_transaction(
-                    auth_token=self._auth_token,
-                    member_id=dlg.member_id,
-                    total_belanja=subtotal,   # points from pre-tax amount
+                    auth_token   = self._auth_token,
+                    member_id    = dlg.member_id,
+                    total_belanja = subtotal,
                 )
-                pts    = result.get("poin_tambahan", 0)
-                tier   = result.get("tier_terkini", "")
+                pts  = result.get("poin_tambahan", 0)
+                tier = result.get("tier_terkini", "")
                 self.status_msg.emit(
-                    f"✅ Transaksi {txn_id} selesai — {dlg.member_name} mendapat +{pts} poin! Tier: {tier}"
+                    f"✅ Transaksi #{trx_id} selesai — {dlg.member_name} mendapat +{pts} poin! Tier: {tier}"
                 )
             except Exception as e:
-                # Points failure should not block a completed sale
                 self.status_msg.emit(
-                    f"✅ Transaksi {txn_id} selesai (gagal tambah poin: {e})"
+                    f"✅ Transaksi #{trx_id} selesai (gagal tambah poin: {e})"
                 )
         else:
-            self.status_msg.emit(f"✅ Transaksi {txn_id} selesai")
+            self.status_msg.emit(f"✅ Transaksi #{trx_id} selesai")
 
         self.transaction_completed.emit()
         self._clear_cart()

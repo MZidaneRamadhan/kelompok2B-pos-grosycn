@@ -12,8 +12,9 @@ from database import (
     TransactionRepository,
     TransactionItemRepository,
     MemberRepository,
+    UserRepository,
 )
-from models.transaction import kurangi_stok, _update_cache_single
+from models.transaction import kurangi_stok
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CART  (in-memory, per session)
@@ -146,6 +147,26 @@ def process_payment(
 # TRANSAKSI
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _resolve_user_id(user_id: int) -> int:
+    """
+    Pastikan user_id benar-benar ada di tabel user.
+    Jika tidak valid, ambil id user pertama yang ada di DB.
+    Mencegah FK constraint error saat INSERT ke tabel transaction.
+    """
+    if user_id:
+        row = UserRepository.get_by_id(user_id)
+        if row:
+            return user_id
+
+    # Fallback: ambil user pertama yang ada
+    rows = UserRepository.get_all()
+    if rows:
+        return rows[0]["id"]
+
+    raise RuntimeError(
+        "Tidak ada user di database! Pastikan minimal 1 user sudah dibuat."
+    )
+
 def _generate_order_id() -> str:
     """Buat order_id harian: ORD-<tanggal>-<nomor urut 3 digit>."""
     today = datetime.now().strftime("%Y%m%d")
@@ -177,11 +198,13 @@ def create_transaction(
     now       = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     # Simpan header transaksi
+    safe_user_id = _resolve_user_id(user_id)
+
     trx_id = TransactionRepository.tambah({
         "order_id":       order_id,
         "order_date":     now,
         "customer_name":  customer_name or None,
-        "user_id":        user_id,
+        "user_id":        safe_user_id,
         "total":          total,
         "changes":        changes,
         "payment_method": payment_method,
@@ -265,17 +288,17 @@ def update_transaction(trx_id: int, payment_method: str) -> bool:
 def void_transaction(trx_id: int) -> bool:
     """
     [VOID] Batalkan transaksi:
-    - Kembalikan stok semua item ke SQLite + cache JSON
+    - Kembalikan stok semua item ke SQLite
     - Hapus transaksi dari DB (hard delete karena tidak ada kolom status)
-
+ 
     Kembalikan True jika berhasil, False jika transaksi tidak ditemukan.
     """
     row = TransactionRepository.get_by_id(trx_id)
     if not row:
         return False
-
+ 
     items = TransactionItemRepository.get_by_transaction(trx_id)
-
+ 
     # Kembalikan stok
     with get_connection() as conn:
         for item in items:
@@ -283,11 +306,8 @@ def void_transaction(trx_id: int) -> bool:
                 "UPDATE product SET stock = stock + ? WHERE id = ?",
                 (item["quantity"], item["product_id"]),
             )
-
-    # Rebuild cache JSON untuk setiap produk yang stoknya dikembalikan
-    for item in items:
-        _update_cache_single(item["product_id"])
-
+ 
     # Hapus transaksi (CASCADE akan hapus transaction_item juga)
     TransactionRepository.hapus(trx_id)
     return True
+ 

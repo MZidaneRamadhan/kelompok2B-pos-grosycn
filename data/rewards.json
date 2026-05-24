@@ -26,5 +26,12 @@
     "desc": "BOGO on any beverage",
     "cost": 500,
     "cat": "Special Offer"
+  },
+  {
+    "id": "R005",
+    "name": "Kopi 1 serenteng",
+    "desc": "",
+    "cat": "Free Item",
+    "cost": 10000
   }
 ]

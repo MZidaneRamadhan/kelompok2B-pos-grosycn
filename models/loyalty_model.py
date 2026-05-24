@@ -1,12 +1,19 @@
-import uuid
+# ─────────────────────────────────────────────────────────────────────────────
+# models/loyalty_model.py
+# Logika bisnis loyalty — semua data dari SQLite via MemberRepository.
+# Tidak ada JSON, tidak ada file Path, tidak ada _load()/_save().
+# ─────────────────────────────────────────────────────────────────────────────
+
 from datetime import datetime
-from pathlib import Path
 
 from database import MemberRepository
 
-DB_PATH = Path("data/members.json")
-member_repo = MemberRepository()
-# ── Tier thresholds (total spent) ──────────────────────────────────────────────
+# ── Konstanta ─────────────────────────────────────────────────────────────────
+
+POINT_VALUE     = 100   # Nilai 1 poin dalam Rupiah
+MAX_REDEEM_RATE = 0.20  # Maks 20% dari subtotal boleh dibayar pakai poin
+POINT_EARN_RATE = 0.01  # 1% dari total belanja → dikonversi jadi poin
+
 TIER_THRESHOLDS = {
     "Platinum": 750_000,
     "Gold":     250_000,
@@ -14,81 +21,39 @@ TIER_THRESHOLDS = {
     "Bronze":   0,
 }
 
-# Maksimal poin yang bisa ditukar per transaksi (dalam rupiah diskon)
-# 1 poin = Rp 100 diskon
-POINT_VALUE      = 100        # Rp per 1 poin
-MAX_REDEEM_RATE  = 0.20       # Maksimal 20% dari subtotal boleh dibayar pakai poin
-POINT_EARN_RATE  = 0.01       # 1% dari total belanja → poin (1% belanja = poin, 1 poin = Rp 100)
+
+# ── Tier ──────────────────────────────────────────────────────────────────────
+
+def calculate_tier(spent: float) -> str:
+    """Tentukan tier dari akumulasi total belanja."""
+    if spent >= TIER_THRESHOLDS["Platinum"]: return "Platinum"
+    if spent >= TIER_THRESHOLDS["Gold"]:     return "Gold"
+    return "Silver" if spent >= TIER_THRESHOLDS["Silver"] else "Bronze"
 
 
-def _load() -> list[dict]:
-    """Baca semua data member dari file JSON."""
-    if not DB_PATH.exists():
-        return []
-    with open(DB_PATH, "r") as f:
-        return json.load(f)
-
-
-def _save(data: list[dict]) -> None:
-    """Tulis semua data member ke file JSON."""
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with open(DB_PATH, "w") as f:
-        json.dump(data, f, indent=2)
-
-
-# ── Tier helpers ───────────────────────────────────────────────────────────────
-
-def calculate_tier(total_spent: float) -> str:
-    """Tentukan tier berdasarkan akumulasi total belanja."""
-    if total_spent >= TIER_THRESHOLDS["Platinum"]: return "Platinum"
-    if total_spent >= TIER_THRESHOLDS["Gold"]:     return "Gold"
-    if total_spent >= TIER_THRESHOLDS["Silver"]:   return "Silver"
-    return "Bronze"
-
-
-def tier_next_threshold(tier: str) -> int | None:
-    """Kembalikan threshold tier berikutnya, atau None jika sudah Platinum."""
-    order = ["Bronze", "Silver", "Gold", "Platinum"]
-    idx = order.index(tier)
-    if idx + 1 >= len(order):
-        return None
-    next_tier = order[idx + 1]
-    return TIER_THRESHOLDS[next_tier]
-
-
-# ── Point helpers ──────────────────────────────────────────────────────────────
+# ── Poin ──────────────────────────────────────────────────────────────────────
 
 def calculate_points_earned(total_belanja: float) -> int:
     """
     Hitung poin yang didapat dari transaksi.
-    Rumus: 1% dari total belanja, lalu dibagi POINT_VALUE.
-    Contoh: Belanja Rp 200.000 → 1% = Rp 2.000 → 2.000 / 100 = 20 poin
+    Rumus: 1% dari total belanja ÷ POINT_VALUE.
+    Contoh: Rp 200.000 × 1% = Rp 2.000 → 2.000 ÷ 100 = 20 poin.
     """
     return int((total_belanja * POINT_EARN_RATE) / POINT_VALUE)
 
 
 def calculate_max_redeem(subtotal: float, points_owned: int) -> dict:
     """
-    Hitung batas maksimum penukaran poin untuk diskon.
-
-    Returns:
-        max_points_usable  : Maks poin yang bisa ditukar (dibatasi 20% subtotal & stok poin)
-        max_discount_value : Nilai diskon dalam rupiah
-        point_value        : Nilai 1 poin dalam rupiah (konstan)
+    Hitung batas maksimum penukaran poin untuk transaksi ini.
+    Dibatasi oleh yang lebih kecil: 20% dari subtotal atau nilai semua poin.
     """
-    # Batas diskon: 20% dari subtotal
-    max_discount_from_rate = subtotal * MAX_REDEEM_RATE
-
-    # Nilai semua poin yang dimiliki member
-    max_discount_from_points = points_owned * POINT_VALUE
-
-    # Ambil yang lebih kecil
-    actual_max_discount = min(max_discount_from_rate, max_discount_from_points)
-    actual_max_points   = int(actual_max_discount / POINT_VALUE)
-
+    max_from_rate   = subtotal * MAX_REDEEM_RATE
+    max_from_points = points_owned * POINT_VALUE
+    actual_discount = min(max_from_rate, max_from_points)
+    actual_points   = int(actual_discount / POINT_VALUE)
     return {
-        "max_points_usable":  actual_max_points,
-        "max_discount_value": actual_max_points * POINT_VALUE,
+        "max_points_usable":  actual_points,
+        "max_discount_value": actual_points * POINT_VALUE,
         "point_value":        POINT_VALUE,
         "max_redeem_rate":    MAX_REDEEM_RATE,
     }
@@ -98,23 +63,20 @@ def apply_point_discount(subtotal: float, points_to_redeem: int, points_owned: i
     """
     Validasi dan hitung diskon dari penukaran poin.
 
-    Returns dict berisi:
+    Returns dict:
         valid           : bool
-        error           : str (jika tidak valid)
-        discount_amount : float — nilai potongan harga
-        points_used     : int   — poin yang benar-benar dipakai
-        final_subtotal  : float — subtotal setelah diskon
+        error           : str  (kosong jika valid)
+        discount_amount : float
+        points_used     : int
+        final_subtotal  : float
     """
     if points_to_redeem <= 0:
-        return {
-            "valid": True, "error": "",
-            "discount_amount": 0.0,
-            "points_used": 0,
-            "final_subtotal": subtotal,
-        }
+        return {"valid": True, "error": "",
+                "discount_amount": 0.0, "points_used": 0, "final_subtotal": subtotal}
 
     if points_to_redeem > points_owned:
-        return {"valid": False, "error": f"Poin tidak cukup! Sisa poin: {points_owned}",
+        return {"valid": False,
+                "error": f"Poin tidak cukup! Sisa poin: {points_owned}",
                 "discount_amount": 0.0, "points_used": 0, "final_subtotal": subtotal}
 
     limit = calculate_max_redeem(subtotal, points_owned)
@@ -132,115 +94,88 @@ def apply_point_discount(subtotal: float, points_to_redeem: int, points_owned: i
     return {
         "valid": True, "error": "",
         "discount_amount": float(discount),
-        "points_used": points_to_redeem,
-        "final_subtotal": subtotal - discount,
+        "points_used":     points_to_redeem,
+        "final_subtotal":  subtotal - discount,
     }
 
 
-# ── CRUD ───────────────────────────────────────────────────────────────────────
+# ── CRUD — semua via MemberRepository ────────────────────────────────────────
 
-def create_member(name: str, email: str, phone: str) -> str:
-    member_id = f"MBR-{str(uuid.uuid4())[:6].upper()}"
-    members.append({
-        "id":        member_id,
-        "name":      name,
-        "email":     email,
-        "phone":     phone,
-        "tier":      "Bronze",
-        "points":    0,
-        "spent":     0.0,
-        "visits":    0,
-        "join":      datetime.now().strftime('%Y-%m-%d'),
-        "is_active": True,
+def create_member(name: str, email: str, phone: str) -> int:
+    """[CREATE] Daftarkan member baru ke SQLite. Kembalikan ID integer."""
+    return MemberRepository.tambah({
+        "member_name": name,
+        "email":       email,
+        "phone":       phone,
+        "total_point": 0,
     })
-    _save(members)
-    return member_id
 
 
-def get_member(member_id: str) -> dict:
-    """[READ] Ambil data satu pelanggan berdasarkan ID."""
-    for m in _load():
-        if m["id"] == member_id:
-            return m
-    return {}
-
-
-def find_member_by_contact(identifier: str) -> dict:
-    """[READ] Cari member berdasarkan nomor HP atau email."""
-    identifier = identifier.strip()
-    for m in _load():
-        if m.get("is_active") and (m.get("phone") == identifier or m.get("email") == identifier):
-            return m
-    return {}
+def get_member(member_id: int) -> dict:
+    """[READ] Ambil data satu member berdasarkan ID integer."""
+    row = MemberRepository.get_by_id(member_id)
+    return _row_to_dict(row) if row else {}
 
 
 def get_all_members() -> list[dict]:
-    """[READ] Ambil semua pelanggan."""
-    return _load()
+    """[READ] Ambil semua member, diurutkan by nama."""
+    rows = MemberRepository.get_all()
+    return [_row_to_dict(r) for r in rows]
 
 
-def update_member(member_id: str, name: str, email: str, phone: str) -> bool:
-    """[UPDATE] Perbarui kontak pelanggan."""
-    members = _load()
-    for m in members:
-        if m["id"] == member_id:
-            m["name"]  = name
-            m["email"] = email
-            m["phone"] = phone
-            _save(members)
-            return True
-    return False
+def find_member_by_contact(identifier: str) -> dict:
+    """[READ] Cari member aktif berdasarkan No. HP atau email."""
+    identifier = identifier.strip()
+    row = MemberRepository.get_by_phone(identifier) or MemberRepository.get_by_email(identifier)
+    return _row_to_dict(row) if row else {}
+
+
+def update_member(member_id: int, name: str, email: str, phone: str) -> bool:
+    """[UPDATE] Perbarui data kontak member."""
+    MemberRepository.update(member_id, {
+        "member_name": name,
+        "email":       email,
+        "phone":       phone,
+    })
+    return True
 
 
 def update_loyalty_stats(
-    member_id: str,
+    member_id: int,
     points_added: int,
     points_used: int,
     spent_added: float,
-    new_tier: str,
+    new_tier: str,          # Disimpan jika kolom tier tersedia
 ) -> bool:
     """
-    [UPDATE] Setelah transaksi selesai:
-      - Tambah poin dari belanja
-      - Kurangi poin yang ditukar (redeem)
-      - Tambah akumulasi belanja & kunjungan
-      - Update tier
+    [UPDATE] Dipanggil setelah transaksi COMPLETED.
+    Net poin = earned - redeemed. Akumulasi spent juga diupdate.
     """
-    members = _load()
-    for m in members:
-        if m["id"] == member_id:
-            m["points"] = max(0, m["points"] + points_added - points_used)
-            m["spent"]  += spent_added
-            m["visits"] += 1
-            m["tier"]   = new_tier
-            _save(members)
-            return True
-    return False
+    net_points = points_added - points_used
+    MemberRepository.update_point(member_id, net_points)
+    MemberRepository.update_spent(member_id, spent_added)
+    return True
 
 
-def deduct_points(member_id: str, points_used: int) -> bool:
-    """[UPDATE] Kurangi poin saat klaim hadiah (Redeem langsung)."""
-    members = _load()
-    for m in members:
-        if m["id"] == member_id:
-            m["points"] = max(0, m["points"] - points_used)
-            _save(members)
-            return True
-    return False
+def deduct_points(member_id: int, points_used: int) -> bool:
+    """[UPDATE] Kurangi poin saat redeem hadiah langsung (bukan lewat transaksi)."""
+    MemberRepository.update_point(member_id, -abs(points_used))
+    return True
 
 
-def delete_member(member_id: str) -> bool:
-    """[DELETE] Soft delete pelanggan."""
-    members = _load()
-    for m in members:
-        if m["id"] == member_id:
-            m["is_active"] = False
-            _save(members)
-            return True
-    return False
+def delete_member(member_id: int) -> bool:
+    """[DELETE] Hapus member dari database (hard delete)."""
+    MemberRepository.hapus(member_id)
+    return True
+
+
+# ── Helper internal ───────────────────────────────────────────────────────────
 
 def _row_to_dict(row) -> dict:
-    """sqlite3.Row → dict dengan key seragam yang dipakai di UI."""
+    """
+    Konversi sqlite3.Row → dict dengan key seragam yang dipakai di seluruh UI.
+    Memetakan nama kolom SQLite ke nama yang dipakai di pos.py & loyalty.py.
+    """
     d = dict(row)
     return {
         "id":     d.get("id"),
@@ -249,7 +184,9 @@ def _row_to_dict(row) -> dict:
         "phone":  d.get("phone", ""),
         "tier":   d.get("tier", "Bronze"),
         "points": d.get("total_point", 0),
-        "spent":  d.get("total_spent", 0.0),
+        "spent":  d.get("spent", 0.0),
         "visits": d.get("visits", 0),
+        # Alias tambahan agar kompatibel dengan loyalty.py lama
+        "member_name": d.get("member_name", ""),
+        "total_point": d.get("total_point", 0),
     }
- 

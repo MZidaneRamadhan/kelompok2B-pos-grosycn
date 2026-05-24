@@ -8,7 +8,6 @@ import logging
 from database import get_connection
 from models.transaction import (
     hapus_produk,
-    _sync_cache_category,
     _update_cache_single,   
 )
 
@@ -111,6 +110,9 @@ def create_product(
     description: str,
 ) -> int:
     """[CREATE] Mendaftarkan product baru, mengembalikan Product ID."""
+        # Validasi harga jual tidak boleh lebih kecil dari harga beli
+    if sell_price < buy_price:
+        raise ValueError("Harga jual tidak boleh lebih kecil dari harga beli!")
     with get_connection() as conn:
         cur = conn.execute(
             """INSERT INTO product
@@ -159,6 +161,9 @@ def update_product(
     description: str,
 ) -> bool:
     """[UPDATE] Memperbarui seluruh data product termasuk stok."""
+        # Validasi harga jual tidak boleh lebih kecil dari harga beli
+    if sell_price < buy_price:
+        raise ValueError("Harga jual tidak boleh lebih kecil dari harga beli!")
     with get_connection() as conn:
         cur = conn.execute(
             """UPDATE product

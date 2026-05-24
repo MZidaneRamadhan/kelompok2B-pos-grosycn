@@ -39,16 +39,18 @@ def get_member(auth_token: str, member_id: str) -> dict:
 
 @requires_permission("transaksi") 
 def verify_member(auth_token: str, identifier: str) -> dict:
-    """[READ] Mencari data member menggunakan nomor HP atau Email (saat kasir memproses diskon)."""
-    # Catatan: Fitur ini memakai izin "transaksi" karena sering dipakai kasir saat pembayaran
     if not identifier:
         raise ValueError("Masukkan Nomor HP atau Email member")
         
     all_members = loyalty_model.get_all_members()
     for m in all_members:
-        if m["is_active"] and (m["phone"] == identifier or m["email"] == identifier):
+        # Gracefully handle whichever column name the DB uses
+        is_active = m.get("is_active") or m.get("active") or m.get("status", 1)
+        if is_active and (m.get("phone") == identifier or m.get("email") == identifier):
             return m
-            
+    if all_members:
+        print("Member keys:", dict(all_members[0]).keys())
+        
     raise ValueError("Pelanggan dengan kontak tersebut tidak ditemukan")
 
 @requires_permission("royalti")
@@ -71,10 +73,10 @@ def update_member(auth_token: str, member_id: str, member_name: str, email: str,
 @requires_permission("royalti")
 def delete_member(auth_token: str, member_id: str) -> bool:
     """[DELETE] Menghapus data keanggotaan pelanggan (Soft delete)."""
-    member = loyalty_model.get_member(member_id)
-    if not member:
+    if member := loyalty_model.get_member(member_id):
+        return loyalty_model.delete_member(member_id)
+    else:
         raise ValueError("Member tidak ditemukan")
-    return loyalty_model.delete_member(member_id)
 
 
 # --- LAYANAN POIN & TRANSAKSI ---

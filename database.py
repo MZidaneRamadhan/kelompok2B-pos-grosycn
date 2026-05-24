@@ -392,7 +392,7 @@ class MemberRepository:
     def update_spent(member_id: int, tambah_spent: float) -> None:
         with get_connection() as conn:
             conn.execute(
-                "UPDATE member SET total_spent = COALESCE(total_spent,0) + ? WHERE id=?",
+                "UPDATE member SET spent = COALESCE(spent,0) + ? WHERE id=?",
                 (tambah_spent, member_id),
             )
  
@@ -400,8 +400,8 @@ class MemberRepository:
     def tambah(data: dict) -> int:
         with get_connection() as conn:
             cur = conn.execute(
-                "INSERT INTO member (member_name, email, phone, total_point) "
-                "VALUES (:member_name, :email, :phone, :total_point)",
+                "INSERT INTO member (member_name, email, phone, total_point, spent, tier, join_date) "
+                "VALUES (:member_name, :email, :phone, :total_point, :spent, :tier, :join_date)",
                 data,
             )
             return cur.lastrowid

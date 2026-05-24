@@ -367,7 +367,7 @@ class DashboardPage(QWidget):
 
             right = QVBoxLayout()
             right.addWidget(
-                make_label(f"Rp{c['total_spent']:,.0f}", 12, bold=True),
+                make_label(f"Rp{c['spent']:,.0f}", 12, bold=True),
                 alignment=Qt.AlignmentFlag.AlignRight,
             )
             right.addWidget(
