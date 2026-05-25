@@ -424,7 +424,7 @@ class DashboardPage(QWidget):
 
     @staticmethod
     def _format_currency(amount: float) -> str:
-        return f"Rp {amount:,.0fa}".replace(",", ".")
+        return f"Rp {amount:,.0f}".replace(",", ".")
 
     @staticmethod
     def _clear_layout(layout) -> None:
