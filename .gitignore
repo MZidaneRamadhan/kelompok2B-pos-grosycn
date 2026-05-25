@@ -11,7 +11,7 @@ database_barang.json
 database_transaksi.json
 
 # API Keys
-.env
+.env.example
 *.env
 
 # Python cache
