@@ -10,8 +10,8 @@ Tim Pengembang
 - Ahmad Bukhori                        (251524033) 
 - Amor Azzam Imani                     (251524038)
 - Muhammad Adhiya Pasya                (251524054)
-- Muhammad Zidane Ramadhan Okaviantoo  (251524058)
-- Nazwa Rizqika                        (251524060)
+- Muhammad Zidane Ramadhan Okaviantoro (251524058)
+- Nazwa Rizqika Azzahra                (251524060)
 
 Dosen Manager: Aprianti Nanda Sari
 
