@@ -159,7 +159,7 @@ CREATE TABLE IF NOT EXISTS supplier_product (
 -- ══════════════════════════════════════════
 -- INDEXES
 -- ══════════════════════════════════════════
-CREATE INDEX IF NOT EXISTS idx_product_category      ON product(category_id);
+CREATE INDEX IF NOT EXISTS idx_product_category       ON product(category_id);
 CREATE INDEX IF NOT EXISTS idx_transaction_user       ON "transaction"(user_id);
 CREATE INDEX IF NOT EXISTS idx_transaction_date       ON "transaction"(order_date);
 CREATE INDEX IF NOT EXISTS idx_trx_item_transaction   ON transaction_item(transaction_id);
@@ -197,6 +197,15 @@ def init_db() -> None:
         conn.executemany(
             "INSERT OR IGNORE INTO category_product (category) VALUES (?)",
             SEED_CATEGORIES,
+        )
+        # Seed user default — pastikan selalu ada minimal 1 user
+        # sehingga FK user_id pada tabel transaction tidak pernah gagal.
+        # Username 'admin' bersifat UNIQUE, jadi INSERT OR IGNORE aman dipanggil
+        # berulang kali (tidak akan duplikat).
+        conn.execute(
+            "INSERT OR IGNORE INTO user (name, username, password, role_id) "
+            "VALUES (?, ?, ?, (SELECT id FROM role WHERE role_name = 'Admin'))",
+            ("Administrator", "admin", "admin123"),
         )
     logger.info("✅ Database diinisialisasi: %s", DB_PATH)
  
@@ -373,13 +382,26 @@ class MemberRepository:
     def get_by_phone(phone: str):
         with get_connection() as conn:
             return conn.execute("SELECT * FROM member WHERE phone=?", (phone,)).fetchone()
+
+    @staticmethod
+    def get_by_email(email: str):
+        with get_connection() as conn:
+            return conn.execute("SELECT * FROM member WHERE email=?", (email,)).fetchone()
+
+    @staticmethod
+    def update_spent(member_id: int, tambah_spent: float) -> None:
+        with get_connection() as conn:
+            conn.execute(
+                "UPDATE member SET spent = COALESCE(spent,0) + ? WHERE id=?",
+                (tambah_spent, member_id),
+            )
  
     @staticmethod
     def tambah(data: dict) -> int:
         with get_connection() as conn:
             cur = conn.execute(
-                "INSERT INTO member (member_name, email, phone, total_point) "
-                "VALUES (:member_name, :email, :phone, :total_point)",
+                "INSERT INTO member (member_name, email, phone, total_point, spent, tier, join_date) "
+                "VALUES (:member_name, :email, :phone, :total_point, :spent, :tier, :join_date)",
                 data,
             )
             return cur.lastrowid

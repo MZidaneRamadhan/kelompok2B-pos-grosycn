@@ -16,7 +16,8 @@ import openpyxl
 
 from views.styles.theme_manager import make_label, card_style
 from views.styles.palettes import DANGER_FG, WARNING_FG, SUCCESS_FG, BG_SURFACE, BORDER
-from models import kasir as backend
+from database import TransactionRepository
+
 
 # Foreground colour per transaction status
 _STATUS_FG = {
@@ -47,7 +48,7 @@ class ReportsPage(QWidget):
         self.stats_row = QHBoxLayout()
         lay.addLayout(self.stats_row)
 
-        self.select_all_cb = QCheckBox("Pilih Semua Transaksi")
+        self.select_all_cb = QCheckBox("Select All Transactions")
         self.select_all_cb.stateChanged.connect(self._toggle_select_all)
         lay.addWidget(self.select_all_cb)
 
@@ -56,7 +57,7 @@ class ReportsPage(QWidget):
         self._refresh()
 
     def refresh_data(self) -> None:
-        """Refresh report contents from transaction storage."""
+        """Refresh report contents from SQLite."""
         self._refresh()
 
     # ── Builder helpers ───────────────────────────────────────────────────────
@@ -68,30 +69,23 @@ class ReportsPage(QWidget):
         )
         fl = QGridLayout(grp)
 
-        # Location
-        fl.addWidget(make_label("Lokasi", 11, color="#64748b"), 0, 0)
-        self.loc_combo = QComboBox()
-        self.loc_combo.addItems(["Semua Lokasi"])
-        self.loc_combo.currentTextChanged.connect(self._refresh)
-        fl.addWidget(self.loc_combo, 1, 0)
-
         # Payment method
-        fl.addWidget(make_label("Metode Pembayaran", 11, color="#64748b"), 0, 1)
+        fl.addWidget(make_label("Payment Method", 11, color="#64748b"), 0, 0)
         self.pay_combo = QComboBox()
-        self.pay_combo.addItems(["Semua Metode", "card", "cash", "mobile"])
+        self.pay_combo.addItems(["All Methods", "card", "cash", "mobile", "qris", "transfer"])
         self.pay_combo.currentTextChanged.connect(self._refresh)
-        fl.addWidget(self.pay_combo, 1, 1)
+        fl.addWidget(self.pay_combo, 1, 0)
 
-        # Status
-        fl.addWidget(make_label("Status", 11, color="#64748b"), 0, 2)
-        self.status_combo = QComboBox()
-        self.status_combo.addItems(["Semua Status", "completed", "refunded", "pending"])
-        self.status_combo.currentTextChanged.connect(self._refresh)
-        fl.addWidget(self.status_combo, 1, 2)
+        # Member filter
+        fl.addWidget(make_label("Customer Type", 11, color="#64748b"), 0, 1)
+        self.member_combo = QComboBox()
+        self.member_combo.addItems(["All", "Member", "Non-Member"])
+        self.member_combo.currentTextChanged.connect(self._refresh)
+        fl.addWidget(self.member_combo, 1, 1)
 
         # Export buttons
         export_row = QHBoxLayout()
-
+        
         btn_pdf = QPushButton("⬇  PDF")
         btn_pdf.setObjectName("btnOutline")
         btn_pdf.clicked.connect(self._export_pdf)
@@ -106,9 +100,9 @@ class ReportsPage(QWidget):
         btn_excel.setObjectName("btnOutline")
         btn_excel.clicked.connect(self._export_excel)
         export_row.addWidget(btn_excel)
-
+        
         export_row.addStretch()
-        fl.addLayout(export_row, 2, 0, 1, 3)
+        fl.addLayout(export_row, 2, 0, 1, 2)
 
         return grp
 
@@ -116,7 +110,7 @@ class ReportsPage(QWidget):
         self.table = QTreeWidget()
         self.table.setColumnCount(6)
         self.table.setHeaderLabels(
-            ["ID Transaksi", "Date", "Time", "Total", "Payment", "Status"]
+            ["Transaction ID", "Date", "Time", "Total", "Payment","Member"]
         )
         self.table.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.table.setAlternatingRowColors(False)
@@ -124,7 +118,6 @@ class ReportsPage(QWidget):
         return self.table
 
     # ── Data ─────────────────────────────────────────────────────────────────
-
     def _toggle_select_all(self, state: int) -> None:
         check_state = Qt.CheckState.Checked if state else Qt.CheckState.Unchecked
         for i in range(self.table.topLevelItemCount()):
@@ -133,55 +126,72 @@ class ReportsPage(QWidget):
                 item.setCheckState(0, check_state)
 
     def _refresh(self) -> None:
-        loc = self.loc_combo.currentText()
-        pay = self.pay_combo.currentText()
-        st = self.status_combo.currentText()
+        pay    = self.pay_combo.currentText()
+        member = self.member_combo.currentText()
 
-        db_transactions = backend.load_json(backend.FILE_TRANSAKSI)
+        # Ambil semua transaksi dari SQLite via TransactionRepository
+        db_rows = TransactionRepository.get_all()
 
         rows = []
-        for transaction_id, txn in db_transactions.items():
-            txn_status = str(txn.get("status", "")).lower()
-            txn_payment = str(txn.get("payment_method", txn.get("payment", ""))).lower()
-            txn_location = str(txn.get("location", "Semua Lokasi"))
+        for row in db_rows:
+            txn = dict(row)
 
-            if loc != "Semua Lokasi" and txn_location != loc:
+            txn_transaction_id = str(txn.get("id", "")).lower()
+            txn_payment = str(txn.get("payment_method", "")).lower()
+            txn_is_member = bool(txn.get("is_member", 0))
+
+            # Filter payment method
+            if pay != "All Methods" and txn_payment != pay.lower():
                 continue
-            if pay != "Semua Metode" and txn_payment != pay.lower():
+
+            # Filter member/non-member
+            if member == "Member" and not txn_is_member:
                 continue
-            if st != "Semua Status" and txn_status != st.lower():
+            if member == "Non-Member" and txn_is_member:
                 continue
+
+            # Pisah tanggal dan waktu dari order_date
+            order_date = str(txn.get("order_date", ""))
+            date_part = order_date.split(" ")[0] if " " in order_date else order_date
+            time_part = order_date.split(" ")[1] if " " in order_date else ""
 
             rows.append({
-                "id": transaction_id,
-                "date": txn.get("timestamp", "").split(" ")[0],
-                "time": txn.get("timestamp", "").split(" ")[1] if " " in txn.get("timestamp", "") else "",
-                "total": float(txn.get("total_amount", txn.get("total", 0))),
-                "payment": txn_payment,
-                "status": txn_status,
-                "items": txn.get("items", [])
+                "db_id":         txn.get("id"),          # PK integer untuk lazy-fetch items
+                "id":            txn_transaction_id,
+                "order_id":      txn.get("order_id", ""),
+                "date":          date_part,
+                "time":          time_part,
+                "customer_name": txn.get("customer_name") or "-",
+                "total":         float(txn.get("total", 0)),
+                "payment":       txn_payment,
+                "is_member":     txn_is_member,
+                "cashier":       txn.get("cashier", ""),
+                "items":         [],  # diisi lazy saat double-click / export
             })
 
         self._rebuild_stats(rows)
         self._populate_table(rows)
 
     def _rebuild_stats(self, rows: list[dict]) -> None:
-        # Clear previous stat cards
+        # Bersihkan stat cards sebelumnya
         while self.stats_row.count():
             item = self.stats_row.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
 
         total_rev = sum(t["total"] for t in rows)
-        avg = total_rev / len(rows) if rows else 0.0
+        avg       = total_rev / len(rows) if rows else 0.0
+        members   = sum(bool(t["is_member"])
+                    for t in rows)
 
         for title, val in [
-            ("Total Revenue", f"Rp{total_rev:,.0f}"),
-            ("Transactions", str(len(rows))),
-            ("Avg Order", f"Rp{avg:,.0f}"),
+            ("Total Revenue",  f"Rp{total_rev:,.0f}"),
+            ("Transactions",   str(len(rows))),
+            ("Avg Order",      f"Rp{avg:,.0f}"),
+            ("Member Trx",     str(members)),
         ]:
             card = QWidget()
-            card.setStyleSheet(card_style() + " min-width:140px;")
+            card.setStyleSheet(f"{card_style()} min-width:140px;")
             cv = QVBoxLayout(card)
             cv.addWidget(make_label(title, 11, color="#64748b"))
             cv.addWidget(make_label(val, 18, bold=True))
@@ -192,98 +202,137 @@ class ReportsPage(QWidget):
     def _populate_table(self, rows: list[dict]) -> None:
         self.table.clear()
         for t in rows:
-            parent = QTreeWidgetItem(self.table)
-            parent.setText(0, t["id"])
-            parent.setCheckState(0, Qt.CheckState.Unchecked)
-            parent.setText(1, t["date"])
-            parent.setText(2, t["time"])
-            parent.setText(3, f"Rp{t['total']:,.0f}")
-            parent.setText(4, t["payment"].capitalize())
-
-            fg = _STATUS_FG.get(t["status"], "#0f172a")
-            parent.setText(5, t["status"].capitalize())
-            parent.setForeground(5, QColor(fg))
-
-            # Store the full transaction data in the item
-            parent.setData(0, Qt.ItemDataRole.UserRole, t)
+            top = QTreeWidgetItem([
+                t.get("order_id", str(t["id"])),
+                t["date"],
+                t["time"],
+                f"Rp{t['total']:,.0f}",
+                t["payment"].capitalize(),
+                "Member" if t["is_member"] else "Umum",
+            ])
+            top.setFlags(top.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            top.setCheckState(0, Qt.CheckState.Unchecked)
+            # Simpan db_id (integer PK) — items di-fetch lazy saat double-click
+            top.setData(0, Qt.ItemDataRole.UserRole, t["db_id"])
+            # Simpan full trx dict untuk export (termasuk items nanti)
+            top.setData(1, Qt.ItemDataRole.UserRole, t)
+            self.table.addTopLevelItem(top)
 
     def _show_transaction_detail(self, item: QTreeWidgetItem, column: int) -> None:
-        trx = item.data(0, Qt.ItemDataRole.UserRole)
+        trx_id = item.data(0, Qt.ItemDataRole.UserRole)
+        if not trx_id:
+            return
+ 
+        # Fetch header + items dari SQLite
+        from models import kasir as backend
+        trx = backend.get_transaction(trx_id)
         if not trx:
             return
-
+ 
         dlg = QDialog(self)
-        dlg.setWindowTitle(f"Transaction: {trx['id']}")
-        dlg.setFixedWidth(400)
-
+        dlg.setWindowTitle(f"Transaksi: {trx.get('order_id', trx_id)}")
+        dlg.setFixedWidth(440)
+ 
         lay = QVBoxLayout(dlg)
         lay.setSpacing(16)
         lay.setContentsMargins(24, 24, 24, 24)
-
+ 
         icon = QLabel("🛒")
         icon.setFixedSize(56, 56)
         icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        icon.setStyleSheet("background:#e0e7ff; color:#4f46e5; border-radius:28px; font-size:24px;")
-
+        icon.setStyleSheet(
+            "background:#e0e7ff; color:#4f46e5; border-radius:28px; font-size:24px;"
+        )
         lay.addWidget(icon, alignment=Qt.AlignmentFlag.AlignHCenter)
-        lay.addWidget(make_label(trx["id"], 16, bold=True), alignment=Qt.AlignmentFlag.AlignHCenter)
-
-        status_lbl = QLabel(trx["status"].capitalize())
-        fg = _STATUS_FG.get(trx["status"], "#0f172a")
-        status_lbl.setStyleSheet(
-            f"background:#f1f5f9; color:{fg}; border-radius:6px; padding:4px 12px; font-weight:bold;")
-        status_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lay.addWidget(status_lbl, alignment=Qt.AlignmentFlag.AlignHCenter)
-
-        line = QWidget()
-        line.setFixedHeight(1)
-        line.setStyleSheet(f"background:{BORDER};")
-        lay.addWidget(line)
-
+        lay.addWidget(
+            make_label(trx.get("order_id", str(trx_id)), 16, bold=True),
+            alignment=Qt.AlignmentFlag.AlignHCenter,
+        )
+ 
+        sep = QWidget(); sep.setFixedHeight(1)
+        sep.setStyleSheet(f"background:{BORDER};")
+        lay.addWidget(sep)
+ 
         form = QFormLayout()
-        form.addRow(make_label("Date", 11, color="#64748b"), make_label(f"{trx['date']} {trx['time']}", 12))
-        form.addRow(make_label("Payment", 11, color="#64748b"), make_label(trx["payment"].capitalize(), 12))
-        form.addRow(make_label("Total", 11, color="#64748b"), make_label(f"Rp{trx['total']:,.0f}", 12, bold=True))
+        order_date = trx.get("order_date", "")
+        date_part  = order_date[:10] if order_date else "-"
+        time_part  = order_date[11:16] if len(order_date) > 10 else "-"
+        form.addRow(
+            make_label("Tanggal", 11, color="#64748b"),
+            make_label(f"{date_part}  {time_part}", 12),
+        )
+        form.addRow(
+            make_label("Pembayaran", 11, color="#64748b"),
+            make_label(str(trx.get("payment_method", "-")).capitalize(), 12),
+        )
+        form.addRow(
+            make_label("Pelanggan", 11, color="#64748b"),
+            make_label(trx.get("customer_name") or "Umum", 12),
+        )
+        form.addRow(
+            make_label("Total", 11, color="#64748b"),
+            make_label(f"Rp{trx.get('total', 0):,.0f}", 12, bold=True),
+        )
         lay.addLayout(form)
-
-        lay.addWidget(make_label("Items Purchased", 12, bold=True))
-
+ 
+        lay.addWidget(make_label("Item yang Dibeli", 12, bold=True))
+ 
         items_lay = QVBoxLayout()
         items_lay.setContentsMargins(12, 12, 12, 12)
-        for i in trx.get("items", []):
-            item_row = QHBoxLayout()
-            item_row.addWidget(make_label(f"{i.get('qty', 1)}x", 11, bold=True))
-            item_row.addWidget(make_label(i.get('name', 'Unknown'), 11))
-            item_row.addStretch()
-            item_row.addWidget(make_label(f"Rp{i.get('subtotal', 0):,.0f}", 11))
-            items_lay.addLayout(item_row)
-
+        items_lay.setSpacing(6)
+ 
+        db_items = trx.get("items", [])
+        if db_items:
+            for i in db_items:
+                # Kolom SQLite: product_name, quantity, subtotal
+                name     = i.get("product_name") or i.get("name", "Unknown")
+                qty      = i.get("quantity") or i.get("qty", 1)
+                subtotal = i.get("subtotal", 0)
+ 
+                row_lay = QHBoxLayout()
+                row_lay.addWidget(make_label(f"{qty}×", 11, bold=True))
+                row_lay.addWidget(make_label(name, 11))
+                row_lay.addStretch()
+                row_lay.addWidget(make_label(f"Rp{subtotal:,.0f}", 11))
+                items_lay.addLayout(row_lay)
+        else:
+            items_lay.addWidget(make_label("Tidak ada data item.", 11, color="#94a3b8"))
+ 
         items_container = QWidget()
-        items_container.setStyleSheet(f"background:{BG_SURFACE}; border:1px solid {BORDER}; border-radius:8px;")
+        items_container.setObjectName("itemsContainer")
+        items_container.setStyleSheet(
+            "QWidget#itemsContainer {"
+            f" background:{BG_SURFACE}; border:1px solid {BORDER}; border-radius:8px; }}"
+        )
         items_container.setLayout(items_lay)
         lay.addWidget(items_container)
-
+ 
         close_btn = QPushButton("Tutup")
         close_btn.setStyleSheet(
-            f"QPushButton {{ background:transparent; border:1px solid {BORDER}; border-radius:8px; padding:7px 16px; font-size:12px;}} QPushButton:hover {{ background:#f1f5f9; }}")
+            f"QPushButton {{ background:transparent; border:1px solid {BORDER};"
+            f" border-radius:8px; padding:7px 16px; font-size:12px; }}"
+            f"QPushButton:hover {{ background:#f1f5f9; }}"
+        )
         close_btn.clicked.connect(dlg.accept)
-
         btn_row = QHBoxLayout()
         btn_row.addStretch()
         btn_row.addWidget(close_btn)
         lay.addLayout(btn_row)
-
+ 
         dlg.exec()
 
     def _get_selected_transactions(self) -> list[dict]:
-        """Helper to get checked transactions from the tree."""
+        """Ambil transaksi yang dicentang, lengkap dengan items dari SQLite."""
+        from models import kasir as backend
         selected = []
         for i in range(self.table.topLevelItemCount()):
             item = self.table.topLevelItem(i)
-            if item.checkState(0) == Qt.CheckState.Checked:
-                trx = item.data(0, Qt.ItemDataRole.UserRole)
-                if trx:
-                    selected.append(trx)
+            if item and item.checkState(0) == Qt.CheckState.Checked:
+                db_id = item.data(0, Qt.ItemDataRole.UserRole)
+                if db_id:
+                    trx = backend.get_transaction(db_id)
+                    if trx:
+                        selected.append(trx)
         return selected
 
     def _export_csv(self) -> None:
@@ -297,25 +346,22 @@ class ReportsPage(QWidget):
             return
         if not path.lower().endswith('.csv'):
             path += '.csv'
-
+            
         try:
             with open(path, mode="w", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
-                writer.writerow(["ID Transaksi", "Date", "Time", "Payment", "Status", "Total", "Item Name", "Item Qty",
-                                 "Item Subtotal"])
+                writer.writerow(["Transaction ID", "Date", "Time", "Payment", "Total", "Item Name", "Item Qty", "Item Subtotal"])
                 for trx in selected:
                     if not trx["items"]:
-                        writer.writerow(
-                            [trx["id"], trx["date"], trx["time"], trx["payment"], trx["status"], trx["total"], "", "",
-                             ""])
+                        writer.writerow([trx["id"], trx["date"], trx["time"], trx["payment"], trx["total"], "", "", ""])
                     else:
                         for idx, item in enumerate(trx["items"]):
+                            name = item.get("product_name") or item.get("name", "-")
+                            qty  = item.get("quantity") or item.get("qty", 1)
                             if idx == 0:
-                                writer.writerow(
-                                    [trx["id"], trx["date"], trx["time"], trx["payment"], trx["status"], trx["total"],
-                                     item["name"], item["qty"], item["subtotal"]])
+                                writer.writerow([trx.get("order_id", trx.get("id")), trx.get("order_date","")[:10], trx.get("order_date","")[11:16], trx.get("payment_method", trx.get("payment","")), trx.get("total", 0), name, qty, item.get("subtotal", 0)])
                             else:
-                                writer.writerow(["", "", "", "", "", "", item["name"], item["qty"], item["subtotal"]])
+                                writer.writerow(["", "", "", "", "", name, qty, item.get("subtotal", 0)])
             self.status_msg.emit("Successfully exported CSV!")
         except Exception as e:
             self.status_msg.emit(f"Error exporting CSV: {e}")
@@ -333,28 +379,37 @@ class ReportsPage(QWidget):
             path += '.xlsx'
 
         try:
-            wb = openpyxl.Workbook()
-            ws = wb.active
-            ws.title = "Transactions"
-            ws.append(["ID Transaksi", "Date", "Time", "Payment", "Status", "Total", "Item Name", "Item Qty",
-                       "Item Subtotal"])
-
-            for trx in selected:
-                if not trx["items"]:
-                    ws.append(
-                        [trx["id"], trx["date"], trx["time"], trx["payment"], trx["status"], trx["total"], "", "", ""])
-                else:
-                    for idx, item in enumerate(trx["items"]):
-                        if idx == 0:
-                            ws.append([trx["id"], trx["date"], trx["time"], trx["payment"], trx["status"], trx["total"],
-                                       item["name"], item["qty"], item["subtotal"]])
-                        else:
-                            ws.append(["", "", "", "", "", "", item["name"], item["qty"], item["subtotal"]])
-
-            wb.save(path)
-            self.status_msg.emit("Successfully exported Excel!")
+            self._extracted_from__export_excel_14(selected, path)
         except Exception as e:
             self.status_msg.emit(f"Error exporting Excel: {e}")
+
+    # TODO Rename this here and in `_export_excel`
+    def _extracted_from__export_excel_14(self, selected, path):
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Transactions"
+        ws.append(["Transaction ID", "Date", "Time", "Payment",  "Total", "Item Name", "Item Qty", "Item Subtotal"])
+
+        for trx in selected:
+            order_id  = trx.get("order_id", str(trx.get("id", "")))
+            date_str  = str(trx.get("order_date", ""))
+            date_part = date_str[:10]
+            time_part = date_str[11:16]
+            payment   = trx.get("payment_method", trx.get("payment", ""))
+            total     = trx.get("total", 0)
+            if not trx["items"]:
+                ws.append([order_id, date_part, time_part, payment, total, "", "", ""])
+            else:
+                for idx, item in enumerate(trx["items"]):
+                    name = item.get("product_name") or item.get("name", "-")
+                    qty  = item.get("quantity") or item.get("qty", 1)
+                    if idx == 0:
+                        ws.append([order_id, date_part, time_part, payment, total, name, qty, item.get("subtotal", 0)])
+                    else:
+                        ws.append(["", "", "", "", "", name, qty, item.get("subtotal", 0)])
+
+        wb.save(path)
+        self.status_msg.emit("Successfully exported Excel!")
 
     def _export_pdf(self) -> None:
         selected = self._get_selected_transactions()
@@ -367,27 +422,29 @@ class ReportsPage(QWidget):
             return
         if not path.lower().endswith('.pdf'):
             path += '.pdf'
-
+            
         try:
             html = "<h1>Transaction Report</h1>"
             html += "<table border='1' cellspacing='0' cellpadding='5' width='100%'>"
-            html += "<tr><th>ID</th><th>Date</th><th>Total</th><th>Payment</th><th>Status</th></tr>"
-
+            html += "<tr><th>ID</th><th>Date</th><th>Total</th><th>Payment</th></tr>"
+            
             for trx in selected:
                 html += f"<tr><td><b>{trx['id']}</b></td><td>{trx['date']} {trx['time']}</td>"
-                html += f"<td>{trx['total']}</td><td>{trx['payment']}</td><td>{trx['status']}</td></tr>"
+                html += f"<td>{trx['total']}</td><td>{trx['payment']}</td></tr>"
                 if trx["items"]:
                     html += "<tr><td colspan='5'>"
                     html += "<ul>"
                     for item in trx["items"]:
-                        html += f"<li>{item['name']} - {item['qty']} - {item['subtotal']}</li>"
+                        name = item.get("product_name") or item.get("name", "-")
+                        qty  = item.get("quantity") or item.get("qty", 1)
+                        html += f"<li>{name} - {qty} - Rp{item.get('subtotal', 0):,.0f}</li>"
                     html += "</ul></td></tr>"
-
+                    
             html += "</table>"
-
+            
             doc = QTextDocument()
             doc.setHtml(html)
-
+            
             printer = QPdfWriter(path)
             printer.setPageSize(QPageSize(QPageSize.PageSizeId.A4))
             doc.print(printer)

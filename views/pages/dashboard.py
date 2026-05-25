@@ -8,100 +8,111 @@ from pathlib import Path
 from PyQt6.QtCore import QPointF, QRectF, Qt
 from PyQt6.QtGui import QColor, QPainter
 from PyQt6.QtWidgets import (
-    QFrame,
-    QGroupBox,
-    QHBoxLayout,
-    QLabel,
-    QProgressBar,
-    QTabWidget,
-    QVBoxLayout,
-    QWidget,
+    QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
+    QLabel, QFrame, QProgressBar,
 )
+from PyQt6.QtCore import Qt
 
-from views.styles.palettes import BG_SURFACE, BORDER, PINK, PRIMARY, SUCCESS, WARNING
-from views.styles.theme_manager import h_line, make_label
+from views.styles.theme_manager import make_label, h_line
+from views.styles.palettes import PRIMARY, SUCCESS, WARNING, PINK, BG_SURFACE, BORDER
 
-BASE_DIR = Path(__file__).resolve().parents[2]
-TRANSACTION_FILE = BASE_DIR / "database_transaksi.json"
+from controllers.dashboard_controller import get_dashboard_summary
 
-CATEGORY_COLORS = [PRIMARY, SUCCESS, WARNING, PINK]
-TIME_FILTERS = {
-    0: 1,
-    1: 7,
-    2: 30,
-    3: 365,
-}
-
-
-class PieChartWidget(QWidget):
-    def __init__(self, categories: list[tuple[str, int, str]], parent=None) -> None:
-        super().__init__(parent)
-        self.categories = categories
-        self.setMinimumHeight(180)
-
-    def paintEvent(self, event) -> None:
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        rect = QRectF(20, 10, 140, 140)
-        total = max(sum(value for _, value, _ in self.categories), 1)
-        start_angle = 0
-
-        for _, value, color in self.categories:
-            span_angle = int((value / total) * 360 * 16)
-            painter.setBrush(QColor(color))
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.drawPie(rect, start_angle, span_angle)
-            start_angle += span_angle
+# Palet warna kategori — dipakai berulang jika kategori > 4
+_CAT_COLORS = [PRIMARY, SUCCESS, WARNING, PINK, "#06b6d4", "#8b5cf6"]
 
 
 class DashboardPage(QWidget):
-    """Dashboard penjualan berbasis data transaksi aktual."""
+    """Overview page: KPI cards, revenue trend, kategori, transaksi, member."""
+
+    # Label tab → key period untuk controller
+    _PERIOD_MAP = {
+        "Harian":   "daily",
+        "Mingguan": "weekly",
+        "Bulanan":  "monthly",
+        "Tahunan":  "annually",
+    }
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
 
-        self.current_period = 2
-        self.transactions = []
-        self.filtered_transactions = []
+        self._period = "monthly"        # default
+        self._data   = {}               # cache hasil get_dashboard_summary
 
-        self.main_layout = QVBoxLayout(self)
-        self.main_layout.setSpacing(20)
-        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        lay = QVBoxLayout(self)
+        lay.setSpacing(12)
+        lay.setContentsMargins(0, 0, 0, 0)
 
-        self.header_layout = self._build_header()
-        self.main_layout.addLayout(self.header_layout)
+        lay.addLayout(self._build_header())
 
-        self.content_widget = QWidget()
-        self.content_layout = QVBoxLayout(self.content_widget)
-        self.content_layout.setSpacing(20)
-        self.main_layout.addWidget(self.content_widget)
+        # ── placeholder widgets yang akan diisi ulang saat refresh ────────────
+        self._kpi_row_widget   = QWidget()
+        self._kpi_row_layout   = QHBoxLayout(self._kpi_row_widget)
+        self._kpi_row_layout.setContentsMargins(0, 0, 0, 0)
+        lay.addWidget(self._kpi_row_widget)
 
-        self._refresh_dashboard()
+        self._charts_row_widget  = QWidget()
+        self._charts_row_layout  = QHBoxLayout(self._charts_row_widget)
+        self._charts_row_layout.setContentsMargins(0, 0, 0, 0)
+        lay.addWidget(self._charts_row_widget)
+
+        self._orders_placeholder = QWidget()
+        self._orders_layout      = QVBoxLayout(self._orders_placeholder)
+        self._orders_layout.setContentsMargins(0, 0, 0, 0)
+        lay.addWidget(self._orders_placeholder)
+
+        self._activity_row_widget  = QWidget()
+        self._activity_row_layout  = QHBoxLayout(self._activity_row_widget)
+        self._activity_row_layout.setContentsMargins(0, 0, 0, 0)
+        lay.addWidget(self._activity_row_widget)
+
+        self._stock_placeholder = QWidget()
+        self._stock_layout      = QVBoxLayout(self._stock_placeholder)
+        self._stock_layout.setContentsMargins(0, 0, 0, 0)
+        lay.addWidget(self._stock_placeholder)
+
+        # Muat data pertama kali
+        self.refresh()
+
+    # ── Public ────────────────────────────────────────────────────────────────
+
+    def refresh(self) -> None:
+        """Ambil ulang semua data dari DB dan render ulang."""
+        self._data = get_dashboard_summary(self._period)
+        self._render_all()
+
+    # ── Header ────────────────────────────────────────────────────────────────
 
     def _build_header(self) -> QHBoxLayout:
         header_layout = QHBoxLayout()
 
-        title_layout = QVBoxLayout()
-        title_layout.addWidget(make_label("Dashboard", 20, bold=True))
-        title_layout.addWidget(
-            make_label("Overview operasional dan transaksi toko", 12, color="#64748b")
-        )
+        title_col = QVBoxLayout()
+        title_col.setSpacing(2)
+        title_col.addWidget(make_label("Dashboard", 18, bold=True))
+        title_col.addWidget(make_label("Ringkasan operasional toko grosir", 11, color="#64748b"))
+        hdr.addLayout(title_col)
+        hdr.addStretch()
 
-        header_layout.addLayout(title_layout)
-        header_layout.addStretch()
-
-        self.time_tabs = QTabWidget()
-        self.time_tabs.setMaximumWidth(380)
-
-        for label in ("Harian", "Mingguan", "Bulanan", "Tahunan"):
-            self.time_tabs.addTab(QWidget(), label)
-
-        self.time_tabs.setCurrentIndex(self.current_period)
-        self.time_tabs.currentChanged.connect(self._refresh_dashboard)
-
-        header_layout.addWidget(self.time_tabs)
-        return header_layout
+        # Tombol periode — lebih ringkas dari QTabWidget (tidak ada padding tab internal)
+        self._period_btns: list = []
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(4)
+        for label in self._PERIOD_MAP:
+            from PyQt6.QtWidgets import QPushButton
+            btn = QPushButton(label)
+            btn.setFixedHeight(28)
+            btn.setCheckable(True)
+            btn.setChecked(label == "Bulanan")
+            btn.setStyleSheet(
+                "QPushButton { border:1px solid #cbd5e1; border-radius:5px; "
+                "padding:0 12px; font-size:11px; background:#f8fafc; color:#334155; }"
+                "QPushButton:checked { background:#5B5BD6; color:white; border-color:#5B5BD6; }"
+                "QPushButton:hover:!checked { background:#f1f5f9; }"
+            )
+            btn.clicked.connect(lambda _, lbl=label: self._on_period_changed(lbl))
+            btn_row.addWidget(btn)
+            self._period_btns.append((label, btn))
+        hdr.addLayout(btn_row)
 
     def _refresh_dashboard(self, period_index: int | None = None) -> None:
         if period_index is not None:
@@ -147,247 +158,250 @@ class DashboardPage(QWidget):
             reverse=True,
         )
 
-    def _build_kpi_row(self) -> QHBoxLayout:
-        total_revenue = sum(
-            transaction["total_amount"] for transaction in self.filtered_transactions
-        )
+    def _on_period_changed(self, label: str) -> None:
+        for lbl, btn in self._period_btns:
+            btn.setChecked(lbl == label)
+        self._period = self._PERIOD_MAP[label]
+        self.refresh()
 
-        total_transactions = len(self.filtered_transactions)
-        active_customers = len(
-            {transaction["customer_name"] for transaction in self.filtered_transactions}
-        )
+    # ── Render semua section ──────────────────────────────────────────────────
 
-        average_order = (
-            total_revenue / total_transactions if total_transactions else 0
-        )
+    def _render_all(self) -> None:
+        self._render_kpi_row()
+        self._render_charts_row()
+        self._render_orders_chart()
+        self._render_activity_row()
+        self._render_low_stock()
 
-        kpi_data = [
-            ("Total Revenue", self._format_currency(total_revenue)),
-            ("Jumlah Transaksi", str(total_transactions)),
-            ("Pelanggan Aktif", str(active_customers)),
-            ("Rata-rata Order", self._format_currency(average_order)),
+    @staticmethod
+    def _clear_layout(layout) -> None:
+        while layout.count():
+            item = layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+    # ── KPI ───────────────────────────────────────────────────────────────────
+
+    def _render_kpi_row(self) -> None:
+        self._clear_layout(self._kpi_row_layout)
+        kpi = self._data.get("kpi", {})
+
+        cards = [
+            ("Total Revenue",       f"Rp{kpi.get('total_revenue',   {}).get('value', 0):,.0f}",
+             kpi.get("total_revenue",   {}).get("change_pct", 0)),
+            ("Total Transaksi",     str(kpi.get("total_orders",    {}).get("value", 0)),
+             kpi.get("total_orders",    {}).get("change_pct", 0)),
+            ("Member Aktif",        str(kpi.get("active_members",  {}).get("value", 0)),
+             kpi.get("active_members",  {}).get("change_pct", 0)),
+            ("Rata-rata Transaksi", f"Rp{kpi.get('avg_order_value', {}).get('value', 0):,.0f}",
+             kpi.get("avg_order_value", {}).get("change_pct", 0)),
         ]
 
-        row_layout = QHBoxLayout()
+        for title, value, change_pct in cards:
+            self._kpi_row_layout.addWidget(self._kpi_card(title, value, change_pct))
 
-        for title, value in kpi_data:
-            row_layout.addWidget(self._kpi_card(title, value))
-
-        return row_layout
-
-    def _build_charts_row(self) -> QHBoxLayout:
-        row_layout = QHBoxLayout()
-        row_layout.addWidget(self._revenue_chart())
-        row_layout.addWidget(self._category_chart())
-        return row_layout
-
-    def _build_activity_row(self) -> QHBoxLayout:
-        row_layout = QHBoxLayout()
-        row_layout.addWidget(self._recent_transactions())
-        row_layout.addWidget(self._top_customers())
-        return row_layout
-
-    def _kpi_card(self, title: str, value: str) -> QWidget:
-        widget = QWidget()
-        widget.setStyleSheet(
+    def _kpi_card(self, title: str, value: str, change_pct: float) -> QWidget:
+        w = QWidget()
+        w.setStyleSheet(
             f"QWidget {{ background:{BG_SURFACE}; border:1px solid {BORDER}; "
             f"border-radius:10px; padding:16px; }}"
         )
+        v = QVBoxLayout(w)
+        v.setSpacing(4)
+        v.addWidget(make_label(title, 11, color="#64748b"))
+        v.addWidget(make_label(value, 20, bold=True))
 
-        layout = QVBoxLayout(widget)
-        layout.addWidget(make_label(title, 11, color="#64748b"))
-        layout.addWidget(make_label(value, 20, bold=True))
+        arrow   = "▲" if change_pct >= 0 else "▼"
+        color   = SUCCESS if change_pct >= 0 else "#dc2626"
+        vs_text = {
+            "daily": "kemarin", "weekly": "minggu lalu",
+            "monthly": "bulan lalu", "annually": "tahun lalu",
+        }.get(self._period, "periode lalu")
+        v.addWidget(make_label(f"{arrow} {abs(change_pct):.1f}% vs {vs_text}", 11, color=color))
+        return w
 
-        return widget
+    # ── Charts row ────────────────────────────────────────────────────────────
+
+    def _render_charts_row(self) -> None:
+        self._clear_layout(self._charts_row_layout)
+        self._charts_row_layout.addWidget(self._revenue_chart())
+        self._charts_row_layout.addWidget(self._category_chart())
 
     def _revenue_chart(self) -> QGroupBox:
-        group_box = QGroupBox("Tren Revenue")
-        group_box.setStyleSheet(
+        trend = self._data.get("revenue_trend", [])
+
+        grp = QGroupBox("Tren Revenue (Rp)")
+        grp.setStyleSheet(
             f"QGroupBox {{ background:{BG_SURFACE}; border:1px solid {BORDER}; border-radius:10px; }}"
         )
+        v = QVBoxLayout(grp)
 
-        layout = QVBoxLayout(group_box)
-        monthly_revenue = defaultdict(int)
+        if not trend:
+            v.addWidget(make_label("Belum ada data transaksi.", 11, color="#64748b"))
+            return grp
 
-        for transaction in self.filtered_transactions:
-            month = datetime.strptime(
-                transaction["timestamp"], "%Y-%m-%d %H:%M:%S"
-            ).strftime("%b")
-            monthly_revenue[month] += transaction["total_amount"]
+        max_rev = max((r["revenue"] for r in trend), default=1) or 1
+        for item in trend:
+            row = QHBoxLayout()
+            row.addWidget(make_label(item["month"], 11, color="#64748b"))
 
-        max_revenue = max(monthly_revenue.values(), default=1)
-
-        for month, revenue in monthly_revenue.items():
-            row_layout = QHBoxLayout()
-            row_layout.addWidget(make_label(month, 11, color="#64748b"))
-
+            bar_w = max(4, int((item["revenue"] / max_rev) * 200))
             bar = QFrame()
-            bar.setFixedSize(int((revenue / max_revenue) * 220), 14)
-            bar.setStyleSheet(f"background:{PRIMARY}; border-radius:4px;")
+            bar.setFixedSize(bar_w, 14)
+            bar.setStyleSheet(f"background:{PRIMARY}; border-radius:3px;")
+            row.addWidget(bar)
 
-            row_layout.addWidget(bar)
-            row_layout.addWidget(make_label(self._format_currency(revenue), 11))
-            row_layout.addStretch()
-
-            layout.addLayout(row_layout)
+            rev_txt = f"Rp{item['revenue'] / 1_000_000:.1f}jt" if item["revenue"] >= 1_000_000 \
+                      else f"Rp{item['revenue']:,.0f}"
+            row.addWidget(make_label(rev_txt, 11))
+            row.addStretch()
+            v.addLayout(row)
 
         return group_box
 
     def _category_chart(self) -> QGroupBox:
-        group_box = QGroupBox("Distribusi Penjualan")
-        group_box.setStyleSheet(
+        cats = self._data.get("sales_by_category", [])
+
+        grp = QGroupBox("Penjualan per Kategori")
+        grp.setStyleSheet(
             f"QGroupBox {{ background:{BG_SURFACE}; border:1px solid {BORDER}; border-radius:10px; }}"
         )
+        v = QVBoxLayout(grp)
 
-        layout = QVBoxLayout(group_box)
-        categories = self._calculate_category_distribution()
+        if not cats:
+            v.addWidget(make_label("Belum ada data penjualan.", 11, color="#64748b"))
+            return grp
 
-        layout.addWidget(PieChartWidget(categories))
+        for i, item in enumerate(cats[:6]):
+            color   = _CAT_COLORS[i % len(_CAT_COLORS)]
+            section = QVBoxLayout()
 
-        for name, total, color in categories:
-            row_layout = QHBoxLayout()
+            hdr = QHBoxLayout()
+            hdr.addWidget(make_label(item["category"], 11))
+            hdr.addStretch()
+            hdr.addWidget(make_label(f"{item['pct']}%", 11, bold=True))
+            section.addLayout(hdr)
 
-            indicator = QLabel()
-            indicator.setFixedSize(12, 12)
-            indicator.setStyleSheet(f"background:{color}; border-radius:6px;")
+            bar = QProgressBar()
+            bar.setValue(item["pct"])
+            bar.setFixedHeight(8)
+            bar.setStyleSheet(
+                f"QProgressBar {{ background:#e2e8f0; border-radius:4px; border:none; }}"
+                f"QProgressBar::chunk {{ background:{color}; border-radius:4px; }}"
+            )
+            section.addWidget(bar)
+            v.addLayout(section)
+            v.addSpacing(4)
 
-            row_layout.addWidget(indicator)
-            row_layout.addWidget(make_label(name, 11))
-            row_layout.addStretch()
-            row_layout.addWidget(make_label(f"{total} item", 11, bold=True))
+        return grp
 
-            layout.addLayout(row_layout)
+    # ── Orders bar chart ──────────────────────────────────────────────────────
 
-        return group_box
-
-    def _calculate_category_distribution(self) -> list[tuple[str, int, str]]:
-        categories = defaultdict(int)
-
-        for transaction in self.filtered_transactions:
-            for item in transaction.get("items", []):
-                product_name = item["name"].lower()
-
-                if "minyak" in product_name or "gula" in product_name:
-                    categories["Sembako"] += item["qty"]
-                elif "sabun" in product_name or "clean" in product_name:
-                    categories["Kebersihan"] += item["qty"]
-                else:
-                    categories["Lainnya"] += item["qty"]
-
-        if not categories:
-            categories["Belum Ada Data"] = 1
-
-        result = []
-
-        for index, (name, total) in enumerate(categories.items()):
-            result.append((name, total, CATEGORY_COLORS[index % len(CATEGORY_COLORS)]))
-
-        return result
+    def _render_orders_chart(self) -> None:
+        self._clear_layout(self._orders_layout)
+        self._orders_layout.addWidget(self._build_orders_chart())
 
     def _build_orders_chart(self) -> QGroupBox:
-        group_box = QGroupBox("Jumlah Order per Bulan")
-        group_box.setStyleSheet(
+        trend = self._data.get("revenue_trend", [])
+
+        grp = QGroupBox("Jumlah Transaksi per Bulan")
+        grp.setStyleSheet(
             f"QGroupBox {{ background:{BG_SURFACE}; border:1px solid {BORDER}; border-radius:10px; }}"
         )
+        h = QHBoxLayout(grp)
 
-        layout = QHBoxLayout(group_box)
-        monthly_orders = defaultdict(int)
+        if not trend:
+            h.addWidget(make_label("Belum ada data transaksi.", 11, color="#64748b"))
+            return grp
 
-        for transaction in self.filtered_transactions:
-            month = datetime.strptime(
-                transaction["timestamp"], "%Y-%m-%d %H:%M:%S"
-            ).strftime("%b")
-            monthly_orders[month] += 1
+        max_ord = max((r["orders"] for r in trend), default=1) or 1
+        for item in trend:
+            col = QVBoxLayout()
+            col.setAlignment(Qt.AlignmentFlag.AlignBottom)
+            col.addStretch()
 
-        max_orders = max(monthly_orders.values(), default=1)
-
-        for month, total_order in monthly_orders.items():
-            column_layout = QVBoxLayout()
-            column_layout.setAlignment(Qt.AlignmentFlag.AlignBottom)
-            column_layout.addStretch()
-
+            bar_h = max(4, int((item["orders"] / max_ord) * 80))
             bar = QFrame()
             bar.setFixedSize(32, max(8, int((total_order / max_orders) * 80)))
             bar.setStyleSheet(f"background:{SUCCESS}; border-radius:4px;")
+            col.addWidget(bar, alignment=Qt.AlignmentFlag.AlignHCenter)
+            col.addWidget(make_label(str(item["orders"]), 10, color="#64748b"),
+                          alignment=Qt.AlignmentFlag.AlignHCenter)
+            col.addWidget(make_label(item["month"], 10, color="#94a3b8"),
+                          alignment=Qt.AlignmentFlag.AlignHCenter)
+            h.addLayout(col)
 
-            column_layout.addWidget(bar, alignment=Qt.AlignmentFlag.AlignHCenter)
-            column_layout.addWidget(
-                make_label(str(total_order), 10, color="#64748b"),
-                alignment=Qt.AlignmentFlag.AlignHCenter,
-            )
-            column_layout.addWidget(
-                make_label(month, 10, color="#94a3b8"),
-                alignment=Qt.AlignmentFlag.AlignHCenter,
-            )
+        return grp
 
-            layout.addLayout(column_layout)
+    # ── Activity row ──────────────────────────────────────────────────────────
 
-        return group_box
+    def _render_activity_row(self) -> None:
+        self._clear_layout(self._activity_row_layout)
+        self._activity_row_layout.addWidget(self._recent_transactions())
+        self._activity_row_layout.addWidget(self._top_members())
 
     def _recent_transactions(self) -> QGroupBox:
-        group_box = QGroupBox("Transaksi Terbaru")
-        group_box.setStyleSheet(
+        trx_list = self._data.get("recent_transactions", [])
+
+        grp = QGroupBox("Transaksi Terbaru")
+        grp.setStyleSheet(
             f"QGroupBox {{ background:{BG_SURFACE}; border:1px solid {BORDER}; border-radius:10px; }}"
         )
 
         layout = QVBoxLayout(group_box)
 
-        for transaction in self.filtered_transactions[:5]:
-            row_layout = QHBoxLayout()
+        if not trx_list:
+            v.addWidget(make_label("Belum ada transaksi.", 11, color="#64748b"))
+            return grp
 
-            left_layout = QVBoxLayout()
-            left_layout.addWidget(make_label(transaction["order_id"], 12, bold=True))
-            left_layout.addWidget(
-                make_label(transaction["timestamp"], 11, color="#64748b")
-            )
+        for t in trx_list:
+            row = QHBoxLayout()
 
-            row_layout.addLayout(left_layout)
-            row_layout.addStretch()
+            left = QVBoxLayout()
+            left.addWidget(make_label(t["order_id"], 12, bold=True))
+            # order_date bisa "2024-06-01 14:30:00" → tampilkan tanggal & waktu
+            date_str = str(t["order_date"])
+            left.addWidget(make_label(date_str[:16], 11, color="#64748b"))
+            row.addLayout(left)
+            row.addStretch()
 
-            right_layout = QVBoxLayout()
-            right_layout.addWidget(
-                make_label(
-                    self._format_currency(transaction["total_amount"]),
-                    12,
-                    bold=True,
-                ),
+            right = QVBoxLayout()
+            right.addWidget(
+                make_label(f"Rp{t['total']:,.0f}", 12, bold=True),
                 alignment=Qt.AlignmentFlag.AlignRight,
             )
-            right_layout.addWidget(
-                make_label(transaction["payment_method"], 11, color="#64748b"),
+            right.addWidget(
+                make_label(t["payment_method"].capitalize(), 11, color="#64748b"),
                 alignment=Qt.AlignmentFlag.AlignRight,
             )
+            row.addLayout(right)
 
-            row_layout.addLayout(right_layout)
-            layout.addLayout(row_layout)
-            layout.addWidget(h_line())
+            v.addLayout(row)
+            v.addWidget(h_line())
 
         return group_box
 
-    def _top_customers(self) -> QGroupBox:
-        group_box = QGroupBox("Top Customer")
-        group_box.setStyleSheet(
+    def _top_members(self) -> QGroupBox:
+        members = self._data.get("top_members", [])
+
+        grp = QGroupBox("Member Teratas")
+        grp.setStyleSheet(
             f"QGroupBox {{ background:{BG_SURFACE}; border:1px solid {BORDER}; border-radius:10px; }}"
         )
 
         layout = QVBoxLayout(group_box)
         customer_data = defaultdict(lambda: {"spent": 0, "orders": 0})
 
-        for transaction in self.filtered_transactions:
-            customer_name = transaction["customer_name"]
-            customer_data[customer_name]["spent"] += transaction["total_amount"]
-            customer_data[customer_name]["orders"] += 1
+        if not members:
+            v.addWidget(make_label("Belum ada data member.", 11, color="#64748b"))
+            return grp
 
-        sorted_customers = sorted(
-            customer_data.items(),
-            key=lambda customer: customer[1]["spent"],
-            reverse=True,
-        )
+        for c in members:
+            row = QHBoxLayout()
 
-        for customer_name, customer_info in sorted_customers[:5]:
-            row_layout = QHBoxLayout()
-
-            avatar = QLabel("".join(name[0] for name in customer_name.split()[:2]))
+            name = c.get("member_name", "-")
+            initials = "".join(n[0].upper() for n in name.split()[:2])
+            avatar = QLabel(initials)
             avatar.setFixedSize(36, 36)
             avatar.setAlignment(Qt.AlignmentFlag.AlignCenter)
             avatar.setStyleSheet(
@@ -396,42 +410,51 @@ class DashboardPage(QWidget):
 
             row_layout.addWidget(avatar)
 
-            info_layout = QVBoxLayout()
-            info_layout.addWidget(make_label(customer_name, 12, bold=True))
-            info_layout.addWidget(
-                make_label(
-                    f"{customer_info['orders']} transaksi",
-                    11,
-                    color="#64748b",
-                )
+            info = QVBoxLayout()
+            info.addWidget(make_label(name, 12, bold=True))
+            info.addWidget(make_label(f"{c['visit_count']} kunjungan", 11, color="#64748b"))
+            row.addLayout(info)
+            row.addStretch()
+
+            right = QVBoxLayout()
+            right.addWidget(
+                make_label(f"Rp{c['spent']:,.0f}", 12, bold=True),
+                alignment=Qt.AlignmentFlag.AlignRight,
             )
-
-            row_layout.addLayout(info_layout)
-            row_layout.addStretch()
-
-            row_layout.addWidget(
-                make_label(
-                    self._format_currency(customer_info["spent"]),
-                    12,
-                    bold=True,
-                )
+            right.addWidget(
+                make_label(f"{c['total_point']} poin", 11, color="#64748b"),
+                alignment=Qt.AlignmentFlag.AlignRight,
             )
+            row.addLayout(right)
 
-            layout.addLayout(row_layout)
-            layout.addWidget(h_line())
+            v.addLayout(row)
+            v.addWidget(h_line())
 
-        return group_box
+        return grp
 
-    @staticmethod
-    def _format_currency(amount: float) -> str:
-        return f"Rp {amount:,.0fa}".replace(",", ".")
+    # ── Low stock alert ───────────────────────────────────────────────────────
 
-    @staticmethod
-    def _clear_layout(layout) -> None:
-        while layout.count():
-            item = layout.takeAt(0)
+    def _render_low_stock(self) -> None:
+        self._clear_layout(self._stock_layout)
+        low = self._data.get("low_stock", [])
+        if low:
+            self._stock_layout.addWidget(self._low_stock_card(low))
 
-            if item.widget():
-                item.widget().deleteLater()
-            elif item.layout():
-                DashboardPage._clear_layout(item.layout())
+    def _low_stock_card(self, items: list[dict]) -> QGroupBox:
+        grp = QGroupBox("⚠️  Stok Menipis")
+        grp.setStyleSheet(
+            f"QGroupBox {{ background:#fff7ed; border:1px solid #fdba74; border-radius:10px; }}"
+        )
+        v = QVBoxLayout(grp)
+
+        for item in items:
+            row = QHBoxLayout()
+            row.addWidget(make_label(item["product_name"], 12, bold=True))
+            row.addWidget(make_label(f"[{item['category']}]", 11, color="#64748b"))
+            row.addStretch()
+            stock_color = "#dc2626" if item["stock"] == 0 else WARNING
+            row.addWidget(make_label(f"Toko: {item['stock']}", 11, color=stock_color, bold=True))
+            row.addWidget(make_label(f"  Gudang: {item['stock_storage']}", 11, color="#64748b"))
+            v.addLayout(row)
+
+        return grp

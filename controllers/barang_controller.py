@@ -6,11 +6,9 @@ Menggunakan SQLite via database.get_connection().
 
 import logging
 from database import get_connection
-from models.barang_sync import (
-    delete_json_product,
-    sync_json_category,
-    sync_json_from_db,
-    update_json_product,
+from models.transaction import (
+    hapus_produk,
+    _update_cache_single,   
 )
 
 logger = logging.getLogger(__name__)
@@ -66,7 +64,7 @@ def update_category(category_id: int, new_category_name: str) -> bool:
             if success:
                 logger.info(f"Category {category_id} updated to '{new_category_name}'")
                 if old_name and old_name != new_category_name:
-                    sync_json_category(old_name, new_category_name)
+                    _sync_cache_category(old_name, new_category_name)
             else:
                 logger.warning(f"Category {category_id} not found for update")
             return success
@@ -89,7 +87,7 @@ def delete_category(category_id: int) -> bool:
             if success:
                 logger.info(f"Category {category_id} deleted")
                 if old_name:
-                    sync_json_category(old_name, "Uncategorized")
+                    _sync_cache_category(old_name, "Uncategorized")
             else:
                 logger.warning(f"Category {category_id} not found for deletion")
             return success
@@ -112,6 +110,9 @@ def create_product(
     description: str,
 ) -> int:
     """[CREATE] Mendaftarkan product baru, mengembalikan Product ID."""
+        # Validasi harga jual tidak boleh lebih kecil dari harga beli
+    if sell_price < buy_price:
+        raise ValueError("Harga jual tidak boleh lebih kecil dari harga beli!")
     with get_connection() as conn:
         cur = conn.execute(
             """INSERT INTO product
@@ -123,7 +124,8 @@ def create_product(
         )
         product_id = cur.lastrowid
 
-    update_json_product(product_id)
+    # Sync cache JSON setelah insert — cukup kirim product_id
+    _update_cache_single(product_id)
     return product_id
 
 
@@ -131,7 +133,7 @@ def get_product(product_id: int) -> dict | None:
     """[READ] Mengambil detail product berdasarkan Product ID."""
     with get_connection() as conn:
         row = conn.execute(
-            "SELECT * FROM product WHERE id = ?", (product_id,) 
+            "SELECT * FROM product WHERE id = ?", (product_id,)
         ).fetchone()
         return dict(row) if row else None
 
@@ -159,6 +161,9 @@ def update_product(
     description: str,
 ) -> bool:
     """[UPDATE] Memperbarui seluruh data product termasuk stok."""
+        # Validasi harga jual tidak boleh lebih kecil dari harga beli
+    if sell_price < buy_price:
+        raise ValueError("Harga jual tidak boleh lebih kecil dari harga beli!")
     with get_connection() as conn:
         cur = conn.execute(
             """UPDATE product
@@ -171,7 +176,8 @@ def update_product(
         success = cur.rowcount > 0
 
     if success:
-        update_json_product(product_id)
+        # Sync cache JSON setelah update — cukup kirim product_id
+        _update_cache_single(product_id)
     return success
 
 
@@ -184,7 +190,7 @@ def delete_product(product_id: int) -> bool:
         success = cur.rowcount > 0
 
     if success:
-        delete_json_product(product_id)
+        hapus_produk(product_id)
     return success
 
 
@@ -219,7 +225,7 @@ def add_stock(product_id: int, quantity: int, location: str) -> int:
             (product_id,),
         ).fetchone()
 
-    update_json_product(product_id)
+    _update_cache_single(product_id)
     return (row["stock"] + row["stock_storage"]) if row else -1
 
 
@@ -245,7 +251,7 @@ def deduct_stock(product_id: int, quantity: int, location: str) -> bool:
             (quantity, product_id),
         )
 
-    update_json_product(product_id)
+    _update_cache_single(product_id)
     return True
 
 
