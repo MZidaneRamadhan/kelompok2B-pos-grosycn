@@ -182,6 +182,20 @@ class MainWindow(QMainWindow):
     def _on_page_changed(self, idx: int) -> None:
         self.header.set_title(_PAGE_TITLES[idx])
         self.stack.setCurrentIndex(idx)
+
+        # Halaman dengan scroll internal sendiri → matikan scroll global
+        # agar tidak ada double scroll bar
+        SELF_SCROLLING_PAGES = {4}  # index 4 = SuppliersPage
+        from PyQt6.QtCore import Qt as _Qt
+        if idx in SELF_SCROLLING_PAGES:
+            self.content_scroll.setVerticalScrollBarPolicy(
+                _Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            )
+        else:
+            self.content_scroll.setVerticalScrollBarPolicy(
+                _Qt.ScrollBarPolicy.ScrollBarAsNeeded
+            )
+
         current_page = self._pages[idx]
         if hasattr(current_page, "refresh_data"):
             current_page.refresh_data()

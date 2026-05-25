@@ -7,10 +7,15 @@ from PyQt6.QtWidgets import (
     QLineEdit, QTableWidget, QTableWidgetItem, QHeaderView,
     QDialog, QDialogButtonBox, QFormLayout, QComboBox,
     QTabWidget, QTextEdit, QGroupBox, QGridLayout, QMessageBox,
-    QDoubleSpinBox, QScrollArea, QCheckBox,
+    QDoubleSpinBox, QScrollArea, QCheckBox, QSizePolicy,
 )
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal, QUrl
 from PyQt6.QtGui import QColor
+try:
+    from PyQt6.QtWebEngineWidgets import QWebEngineView
+    _HAS_WEBENGINE = True
+except ImportError:
+    _HAS_WEBENGINE = False
 
 from views.styles.theme_manager import make_label, h_line, card_style
 from views.styles.palettes import (
@@ -31,7 +36,7 @@ from controllers.supplier_controller import (
     save_suppliers,
 )
 from services.places_service import PlacesAPIError
-from config import API_KEY
+from config import API_KEY, TOKO_LAT, TOKO_LNG
 
 SOURCE_OPTIONS = ["manual", "google_places", "scraping"]
 
@@ -705,15 +710,41 @@ class SuppliersPage(QWidget):
         super().__init__(parent)
         self._suppliers: list[dict] = []
 
-        lay = QVBoxLayout(self)
+        # Layout utama — hanya scroll area
+        root_lay = QVBoxLayout(self)
+        root_lay.setSpacing(0)
+        root_lay.setContentsMargins(0, 0, 0, 0)
+
+        # Scroll area internal agar tabel tidak mengecil
+        self._scroll = QScrollArea()
+        self._scroll.setWidgetResizable(True)
+        self._scroll.setFrameShape(self._scroll.Shape.NoFrame)
+        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+        inner = QWidget()
+        lay = QVBoxLayout(inner)
         lay.setSpacing(16)
-        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setContentsMargins(0, 0, 8, 16)
 
         lay.addLayout(self._build_header())
         self._stats_row = self._build_stats()
         lay.addLayout(self._stats_row)
+
+        # ── Visualisasi (sebelum tabel) ───────────────────────────────────────
+        self._map_widget     = self._build_map_section()
+        self._scatter_widget = self._build_scatter_section()
+        lay.addWidget(self._map_widget)
+        lay.addWidget(self._scatter_widget)
+
         lay.addLayout(self._build_controls())
-        lay.addWidget(self._build_table())
+
+        # Tabel dengan minimum height agar tidak terlalu kecil
+        tbl = self._build_table()
+        tbl.setMinimumHeight(320)
+        lay.addWidget(tbl, stretch=1)
+
+        self._scroll.setWidget(inner)
+        root_lay.addWidget(self._scroll)
 
         self._load_data()
 
@@ -798,6 +829,296 @@ class SuppliersPage(QWidget):
 
         return ctrl
 
+    # ── Visualisasi: Cluster Map ──────────────────────────────────────────────
+
+    def _build_map_section(self) -> QWidget:
+        """Section peta sebaran supplier menggunakan Leaflet.js via QWebEngineView."""
+        wrapper = QWidget()
+        wrapper.setObjectName("mapSection")
+        wrapper.setStyleSheet(
+            "QWidget#mapSection {"
+            f" background:{BG_SURFACE}; border:1px solid {BORDER};"
+            " border-radius:12px; }"
+        )
+        lay = QVBoxLayout(wrapper)
+        lay.setContentsMargins(16, 14, 16, 14)
+        lay.setSpacing(8)
+
+        hdr = QHBoxLayout()
+        hdr.addWidget(make_label("🗺️  Peta Sebaran Supplier", 13, bold=True))
+        hdr.addStretch()
+        self._map_count_lbl = make_label("", 11, color="#64748b")
+        hdr.addWidget(self._map_count_lbl)
+        lay.addLayout(hdr)
+        lay.addWidget(make_label(
+            "Lokasi supplier dari data Google Places — titik cluster otomatis saat zoom out.",
+            11, color="#64748b",
+        ))
+
+        if _HAS_WEBENGINE:
+            self._map_view = QWebEngineView()
+            self._map_view.setFixedHeight(320)
+            self._map_view.setSizePolicy(
+                QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+            )
+            lay.addWidget(self._map_view)
+        else:
+            lay.addWidget(make_label(
+                "⚠ PyQt6-WebEngine tidak terinstall.\n"
+                "Jalankan: pip install PyQt6-WebEngine",
+                12, color="#ef4444",
+            ))
+
+        return wrapper
+
+    def _render_map(self, suppliers: list[dict]) -> None:
+        """Render Leaflet cluster map dengan data supplier."""
+        if not _HAS_WEBENGINE:
+            return
+
+        geo = [
+            s for s in suppliers
+            if s.get("lat") and s.get("lng")
+            and float(s.get("lat", 0)) != 0.0
+            and float(s.get("lng", 0)) != 0.0
+        ]
+        self._map_count_lbl.setText(f"{len(geo)} dari {len(suppliers)} supplier dipetakan")
+
+        markers_js = ""
+        for s in geo:
+            name    = (s.get("supplier_name") or "").replace("'", "\'")
+            alamat  = (s.get("alamat") or "-").replace("'", "\'")
+            rating  = float(s.get("rating") or 0)
+            lat     = float(s["lat"])
+            lng     = float(s["lng"])
+            color   = "#18A558" if rating >= 4.0 else "#F59E0B" if rating >= 3.0 else "#DC2626"
+            markers_js += (
+                f"L.circleMarker([{lat},{lng}], {{"
+                f"radius:8, fillColor:'{color}', color:'#fff',"
+                f"weight:2, opacity:1, fillOpacity:0.85"
+                f"}}).addTo(markers)"
+                f".bindPopup('<b>{name}</b><br>📍 {alamat}<br>⭐ {rating:.1f}');"
+            )
+
+        html = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset='utf-8'/>
+<meta name='viewport' content='width=device-width,initial-scale=1'/>
+<link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'/>
+<link rel='stylesheet' href='https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css'/>
+<link rel='stylesheet' href='https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css'/>
+<script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></script>
+<script src='https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js'></script>
+<style>
+  html,body,#map{{margin:0;padding:0;width:100%;height:100%;}}
+  .legend{{background:#fff;padding:10px 14px;border-radius:8px;
+           box-shadow:0 2px 8px rgba(0,0,0,.15);font-size:12px;line-height:20px;}}
+  .legend span{{display:inline-block;width:12px;height:12px;
+                border-radius:50%;margin-right:6px;vertical-align:middle;}}
+</style>
+</head>
+<body>
+<div id='map'></div>
+<script>
+  var map = L.map('map').setView([{TOKO_LAT},{TOKO_LNG}], 12);
+  L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png',
+    {{attribution:'© OpenStreetMap contributors', maxZoom:18}}).addTo(map);
+
+  // Toko sendiri — pin biru
+  L.marker([{TOKO_LAT},{TOKO_LNG}])
+    .addTo(map)
+    .bindPopup('<b>📦 Toko Anda</b>')
+    .openPopup();
+
+  var markers = L.markerClusterGroup({{maxClusterRadius:50}});
+  {markers_js}
+  map.addLayer(markers);
+
+  // Legend
+  var legend = L.control({{position:'bottomright'}});
+  legend.onAdd = function(){{
+    var d=L.DomUtil.create('div','legend');
+    d.innerHTML='<b>Rating</b><br>'
+      +'<span style="background:#18A558"></span>≥ 4.0<br>'
+      +'<span style="background:#F59E0B"></span>3.0 – 3.9<br>'
+      +'<span style="background:#DC2626"></span>< 3.0';
+    return d;
+  }};
+  legend.addTo(map);
+</script>
+</body>
+</html>"""
+        self._map_view.setHtml(html, QUrl("about:blank"))
+
+    # ── Visualisasi: Scatter Plot Rating vs Review ─────────────────────────────
+
+    def _build_scatter_section(self) -> QWidget:
+        """Scatter plot Rating vs Jumlah Review via Chart.js."""
+        wrapper = QWidget()
+        wrapper.setObjectName("scatterSection")
+        wrapper.setStyleSheet(
+            "QWidget#scatterSection {"
+            f" background:{BG_SURFACE}; border:1px solid {BORDER};"
+            " border-radius:12px; }"
+        )
+        lay = QVBoxLayout(wrapper)
+        lay.setContentsMargins(16, 14, 16, 14)
+        lay.setSpacing(8)
+
+        hdr = QHBoxLayout()
+        hdr.addWidget(make_label("📊  Rating vs Jumlah Review", 13, bold=True))
+        hdr.addStretch()
+        lay.addLayout(hdr)
+        lay.addWidget(make_label(
+            "Setiap titik = 1 supplier. Hover untuk detail. Warna = kategori insight.",
+            11, color="#64748b",
+        ))
+
+        # Legend insight
+        legend_row = QHBoxLayout()
+        legend_row.setSpacing(16)
+        for color, label in [
+            ("#18A558", "⬤  Kuat & terpercaya (rating ≥4 + review banyak)"),
+            ("#DC2626", "⬤  Peluang kompetitor (rating rendah + review tinggi)"),
+            ("#5B5BD6", "⬤  Hidden gem (rating tinggi + review sedikit)"),
+            ("#94a3b8", "⬤  Lainnya"),
+        ]:
+            lbl = QLabel(label)
+            lbl.setStyleSheet(f"font-size:10px; color:{color};")
+            legend_row.addWidget(lbl)
+        legend_row.addStretch()
+        lay.addLayout(legend_row)
+
+        if _HAS_WEBENGINE:
+            self._scatter_view = QWebEngineView()
+            self._scatter_view.setFixedHeight(300)
+            self._scatter_view.setSizePolicy(
+                QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+            )
+            lay.addWidget(self._scatter_view)
+        else:
+            lay.addWidget(make_label(
+                "⚠ PyQt6-WebEngine tidak terinstall.\n"
+                "Jalankan: pip install PyQt6-WebEngine",
+                12, color="#ef4444",
+            ))
+
+        return wrapper
+
+    def _render_scatter(self, suppliers: list[dict]) -> None:
+        """Render Chart.js scatter plot Rating vs user_ratings_total."""
+        if not _HAS_WEBENGINE:
+            return
+
+        points = []
+        for s in suppliers:
+            rating  = float(s.get("rating") or 0)
+            reviews = int(s.get("user_ratings_total") or s.get("reviews") or 0)
+            if rating == 0 and reviews == 0:
+                continue
+            name   = (s.get("supplier_name") or "-").replace("'", "\'").replace('"', '\"')
+            alamat = (s.get("alamat") or "-").replace("'", "\'").replace('"', '\"')
+
+            # Tentukan warna berdasarkan kuadran insight
+            avg_reviews = 50  # threshold: banyak review
+            if rating >= 4.0 and reviews >= avg_reviews:
+                color = "rgba(24,165,88,0.85)"   # hijau — kuat & terpercaya
+            elif rating < 3.5 and reviews >= avg_reviews:
+                color = "rgba(220,38,38,0.85)"   # merah — peluang kompetitor
+            elif rating >= 4.0 and reviews < avg_reviews:
+                color = "rgba(91,91,214,0.85)"   # ungu — hidden gem
+            else:
+                color = "rgba(148,163,184,0.75)" # abu — biasa
+
+            points.append(
+                f'{{"x":{reviews},"y":{rating},"label":"{name}","alamat":"{alamat}",'
+                f'"borderColor":"{color}","backgroundColor":"{color}"}}'
+            )
+
+        points_json = "[" + ",".join(points) + "]"
+
+        html = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset='utf-8'/>
+<script src='https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js'></script>
+<style>
+  html,body{{margin:0;padding:12px;background:#fff;box-sizing:border-box;}}
+  #c{{width:100%;height:320px;}}
+  #tooltip-box{{
+    position:absolute;display:none;background:#1e293b;color:#f8fafc;
+    padding:8px 12px;border-radius:8px;font-size:12px;
+    pointer-events:none;max-width:240px;line-height:1.6;
+    box-shadow:0 4px 12px rgba(0,0,0,.3);
+  }}
+</style>
+</head>
+<body>
+<canvas id='c'></canvas>
+<div id='tooltip-box'></div>
+<script>
+var raw = {points_json};
+
+var datasets = raw.map(function(p){{
+  return {{
+    data: [{{x:p.x, y:p.y}}],
+    label: p.label,
+    pointRadius: 9,
+    pointHoverRadius: 12,
+    backgroundColor: p.backgroundColor,
+    borderColor: p.borderColor,
+    borderWidth: 2,
+    _meta: p,
+  }};
+}});
+
+var ctx = document.getElementById('c').getContext('2d');
+var chart = new Chart(ctx, {{
+  type: 'scatter',
+  data: {{datasets: datasets}},
+  options: {{
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {{
+      legend: {{display: false}},
+      tooltip: {{
+        enabled: false,
+        external: function(context) {{
+          var tip = document.getElementById('tooltip-box');
+          if (context.tooltip.opacity === 0) {{ tip.style.display='none'; return; }}
+          var d = context.tooltip.dataPoints[0];
+          var ds = chart.data.datasets[d.datasetIndex];
+          tip.innerHTML = '<b>'+ds._meta.label+'</b><br>📍 '+ds._meta.alamat
+            +'<br>⭐ Rating: <b>'+d.parsed.y.toFixed(1)+'</b>'
+            +'<br>💬 Review: <b>'+d.parsed.x+'</b>';
+          var pos = context.chart.canvas.getBoundingClientRect();
+          tip.style.display = 'block';
+          tip.style.left = (context.tooltip.caretX + 16) + 'px';
+          tip.style.top  = (context.tooltip.caretY - 10) + 'px';
+        }}
+      }}
+    }},
+    scales: {{
+      x: {{
+        title: {{display:true, text:'Jumlah Review', font:{{size:12}}}},
+        beginAtZero: true,
+        grid: {{color:'rgba(0,0,0,.06)'}},
+      }},
+      y: {{
+        title: {{display:true, text:'Rating', font:{{size:12}}}},
+        min: 0, max: 5.5,
+        ticks: {{stepSize: 0.5}},
+        grid: {{color:'rgba(0,0,0,.06)'}},
+      }}
+    }}
+  }}
+}});
+</script>
+</body>
+</html>"""
+        self._scatter_view.setHtml(html, QUrl("about:blank"))
+
     def _build_table(self) -> QTableWidget:
         self.table = QTableWidget()
         self.table.setColumnCount(6)
@@ -825,6 +1146,8 @@ class SuppliersPage(QWidget):
 
         self._refresh_table(self._suppliers)
         self._refresh_stats()
+        self._render_map(self._suppliers)
+        self._render_scatter(self._suppliers)
 
     def _on_search(self) -> None:
         keyword = self.search.text().strip()
