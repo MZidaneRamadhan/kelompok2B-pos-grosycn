@@ -1060,23 +1060,21 @@ class SuppliersPage(QWidget):
 <script>
 var raw = {points_json};
 
-var datasets = raw.map(function(p){{
-  return {{
-    data: [{{x:p.x, y:p.y}}],
-    label: p.label,
-    pointRadius: 9,
-    pointHoverRadius: 12,
-    backgroundColor: p.backgroundColor,
-    borderColor: p.borderColor,
-    borderWidth: 2,
-    _meta: p,
-  }};
-}});
+// Semua titik digabung ke SATU dataset agar tidak ada batas jumlah dataset.
+// Warna per-titik diatur lewat array backgroundColor/borderColor.
+var dataset = {{
+  data:            raw.map(function(p){{ return {{x:p.x, y:p.y}}; }}),
+  backgroundColor: raw.map(function(p){{ return p.backgroundColor; }}),
+  borderColor:     raw.map(function(p){{ return p.borderColor; }}),
+  pointRadius:     9,
+  pointHoverRadius:12,
+  borderWidth:     2,
+}};
 
 var ctx = document.getElementById('c').getContext('2d');
 var chart = new Chart(ctx, {{
   type: 'scatter',
-  data: {{datasets: datasets}},
+  data: {{datasets: [dataset]}},
   options: {{
     responsive: true,
     maintainAspectRatio: false,
@@ -1088,11 +1086,10 @@ var chart = new Chart(ctx, {{
           var tip = document.getElementById('tooltip-box');
           if (context.tooltip.opacity === 0) {{ tip.style.display='none'; return; }}
           var d = context.tooltip.dataPoints[0];
-          var ds = chart.data.datasets[d.datasetIndex];
-          tip.innerHTML = '<b>'+ds._meta.label+'</b><br>📍 '+ds._meta.alamat
+          var p = raw[d.dataIndex];
+          tip.innerHTML = '<b>'+p.label+'</b><br>📍 '+p.alamat
             +'<br>⭐ Rating: <b>'+d.parsed.y.toFixed(1)+'</b>'
             +'<br>💬 Review: <b>'+d.parsed.x+'</b>';
-          var pos = context.chart.canvas.getBoundingClientRect();
           tip.style.display = 'block';
           tip.style.left = (context.tooltip.caretX + 16) + 'px';
           tip.style.top  = (context.tooltip.caretY - 10) + 'px';

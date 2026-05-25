@@ -1,12 +1,7 @@
-from __future__ import annotations
+# ─────────────────────────────────────────────────────────────────────────────
+# views/pages/dashboard.py
+# ─────────────────────────────────────────────────────────────────────────────
 
-import json
-from collections import defaultdict
-from datetime import datetime, timedelta
-from pathlib import Path
-
-from PyQt6.QtCore import QPointF, QRectF, Qt
-from PyQt6.QtGui import QColor, QPainter
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
     QLabel, QFrame, QProgressBar,
@@ -84,7 +79,7 @@ class DashboardPage(QWidget):
     # ── Header ────────────────────────────────────────────────────────────────
 
     def _build_header(self) -> QHBoxLayout:
-        header_layout = QHBoxLayout()
+        hdr = QHBoxLayout()
 
         title_col = QVBoxLayout()
         title_col.setSpacing(2)
@@ -114,49 +109,7 @@ class DashboardPage(QWidget):
             self._period_btns.append((label, btn))
         hdr.addLayout(btn_row)
 
-    def _refresh_dashboard(self, period_index: int | None = None) -> None:
-        if period_index is not None:
-            self.current_period = period_index
-
-        self.transactions = self._load_transactions()
-        self.filtered_transactions = self._filter_transactions(self.transactions)
-
-        self._clear_layout(self.content_layout)
-
-        self.content_layout.addLayout(self._build_kpi_row())
-        self.content_layout.addLayout(self._build_charts_row())
-        self.content_layout.addWidget(self._build_orders_chart())
-        self.content_layout.addLayout(self._build_activity_row())
-        self.content_layout.addStretch()
-
-    def _load_transactions(self) -> list[dict]:
-        if not TRANSACTION_FILE.exists():
-            return []
-
-        with open(TRANSACTION_FILE, "r", encoding="utf-8") as file:
-            data = json.load(file)
-
-        return list(data.values())
-
-    def _filter_transactions(self, transactions: list[dict]) -> list[dict]:
-        days = TIME_FILTERS.get(self.current_period, 30)
-        threshold = datetime.now() - timedelta(days=days)
-
-        filtered_data = []
-
-        for transaction in transactions:
-            transaction_date = datetime.strptime(
-                transaction["timestamp"], "%Y-%m-%d %H:%M:%S"
-            )
-
-            if transaction_date >= threshold:
-                filtered_data.append(transaction)
-
-        return sorted(
-            filtered_data,
-            key=lambda transaction: transaction["timestamp"],
-            reverse=True,
-        )
+        return hdr
 
     def _on_period_changed(self, label: str) -> None:
         for lbl, btn in self._period_btns:
@@ -257,7 +210,7 @@ class DashboardPage(QWidget):
             row.addStretch()
             v.addLayout(row)
 
-        return group_box
+        return grp
 
     def _category_chart(self) -> QGroupBox:
         cats = self._data.get("sales_by_category", [])
@@ -322,7 +275,7 @@ class DashboardPage(QWidget):
 
             bar_h = max(4, int((item["orders"] / max_ord) * 80))
             bar = QFrame()
-            bar.setFixedSize(32, max(8, int((total_order / max_orders) * 80)))
+            bar.setFixedSize(32, bar_h)
             bar.setStyleSheet(f"background:{SUCCESS}; border-radius:4px;")
             col.addWidget(bar, alignment=Qt.AlignmentFlag.AlignHCenter)
             col.addWidget(make_label(str(item["orders"]), 10, color="#64748b"),
@@ -347,8 +300,7 @@ class DashboardPage(QWidget):
         grp.setStyleSheet(
             f"QGroupBox {{ background:{BG_SURFACE}; border:1px solid {BORDER}; border-radius:10px; }}"
         )
-
-        layout = QVBoxLayout(group_box)
+        v = QVBoxLayout(grp)
 
         if not trx_list:
             v.addWidget(make_label("Belum ada transaksi.", 11, color="#64748b"))
@@ -379,7 +331,7 @@ class DashboardPage(QWidget):
             v.addLayout(row)
             v.addWidget(h_line())
 
-        return group_box
+        return grp
 
     def _top_members(self) -> QGroupBox:
         members = self._data.get("top_members", [])
@@ -388,9 +340,7 @@ class DashboardPage(QWidget):
         grp.setStyleSheet(
             f"QGroupBox {{ background:{BG_SURFACE}; border:1px solid {BORDER}; border-radius:10px; }}"
         )
-
-        layout = QVBoxLayout(group_box)
-        customer_data = defaultdict(lambda: {"spent": 0, "orders": 0})
+        v = QVBoxLayout(grp)
 
         if not members:
             v.addWidget(make_label("Belum ada data member.", 11, color="#64748b"))
@@ -407,8 +357,7 @@ class DashboardPage(QWidget):
             avatar.setStyleSheet(
                 f"background:#ede9fe; color:{PRIMARY}; border-radius:18px; font-weight:bold;"
             )
-
-            row_layout.addWidget(avatar)
+            row.addWidget(avatar)
 
             info = QVBoxLayout()
             info.addWidget(make_label(name, 12, bold=True))

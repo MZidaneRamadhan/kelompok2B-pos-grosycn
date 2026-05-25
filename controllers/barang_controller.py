@@ -124,8 +124,6 @@ def create_product(
         )
         product_id = cur.lastrowid
 
-    # Sync cache JSON setelah insert — cukup kirim product_id
-    _update_cache_single(product_id)
     return product_id
 
 
@@ -175,9 +173,6 @@ def update_product(
         )
         success = cur.rowcount > 0
 
-    if success:
-        # Sync cache JSON setelah update — cukup kirim product_id
-        _update_cache_single(product_id)
     return success
 
 

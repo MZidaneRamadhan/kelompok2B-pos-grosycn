@@ -669,24 +669,20 @@ class POSPage(QWidget):
         for c in self._cart:
             if c["product_id"] == item["productId"]:
                 new_qty = c["qty"] + delta
-                if new_qty > 0:
-                    c["qty"]     = new_qty
-                    c["subtotal"] = c["price"] * new_qty
-                else:
+                if new_qty <= 0:
                     self._remove(item)
                     break
-                # Validasi stok: cek ketersediaan sebelum menaikkan qty
+                # Cek stok hanya saat menambah
                 if delta > 0:
-                    db_products = backend.load_json(backend.FILE_BARANG)
-                    prod = db_products.get(c_item["product_id"], {})
-                    stok_tersedia = prod.get("stock", 0)
-                    if new_qty > stok_tersedia:
+                    db_row = ProductRepository.get_by_id(c["product_id"])
+                    stock  = dict(db_row)["stock"] if db_row else 0
+                    if new_qty > stock:
                         self.status_msg.emit(
-                            f"Stok {c_item['name']} tidak cukup! (Tersedia: {stok_tersedia})"
+                            f"⚠ Stok {c.get('product_name', 'produk')} hanya tersisa {stock}"
                         )
                         break
-                c_item["qty"] = new_qty
-                c_item["subtotal"] = c_item["price"] * new_qty
+                c["qty"]      = new_qty
+                c["subtotal"] = c["price"] * new_qty
                 break
         self._refresh_cart()
 

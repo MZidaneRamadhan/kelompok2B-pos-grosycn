@@ -7,7 +7,7 @@ Ubah nilai di sini tanpa perlu menyentuh file lain.
 # API & LOKASI
 # ─────────────────────────────────────────
 import os
-API_KEY  = os.environ.get("GROSYNC_API_KEY", "")
+API_KEY  = os.environ.get("GROSYNC_API_KEY", "AIzaSyBzAnIm2ra8ij1aNruvWucMJEloWJV-ZMY")
 TOKO_LAT = -6.9175
 TOKO_LNG = 107.6191
 
