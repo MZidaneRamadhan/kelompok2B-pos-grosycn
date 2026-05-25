@@ -59,8 +59,9 @@ def add_item_to_cart(session_id: str, product_id: str, quantity: int) -> str:
                 db_carts[cart_id].append(item)
         else:
             print(f"Gagal: Stok {product['name']} tidak cukup! (Sisa: {product['stock']}, Di keranjang: {existing_qty})")
-            
-    return cart_id
+            return False
+
+    return True
 
 def remove_item_from_cart(cart_id: str, product_id: str) -> list[dict]:
     if cart_id in db_carts:
@@ -110,9 +111,25 @@ def create_transaction(order_id: str, customer_name: str, payment_method: str, i
         "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         "status": "COMPLETED"
     }
-    
-    save_json(FILE_BARANG, db_products)
-    save_json(FILE_TRANSAKSI, db_transactions)
+
+    try:
+        save_json(FILE_BARANG, db_products)
+    except Exception as e:
+        print(f"[ERROR] Gagal menyimpan data barang: {e}")
+        raise RuntimeError("Transaksi dibatalkan: gagal menyimpan data stok.")
+
+    try:
+        save_json(FILE_TRANSAKSI, db_transactions)
+    except Exception as e:
+        # Rollback stok di JSON (pulihkan dari disk yang baru saja tersimpan)
+        print(f"[ERROR] Gagal menyimpan transaksi: {e}. Melakukan rollback stok...")
+        db_products_rollback = load_json(FILE_BARANG)
+        for item in items:
+            prod_id = item["product_id"]
+            if prod_id in db_products_rollback:
+                db_products_rollback[prod_id]["stock"] += item["qty"]
+        save_json(FILE_BARANG, db_products_rollback)
+        raise RuntimeError("Transaksi dibatalkan: gagal menyimpan catatan transaksi.")
     
     return transaction_id
 

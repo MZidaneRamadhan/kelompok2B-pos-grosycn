@@ -1,6 +1,7 @@
 import hashlib
 import secrets
 import functools
+import os
 from models import user_model
 
 # --- DEFINISI HAK AKSES (RBAC) ---
@@ -14,8 +15,25 @@ ROLE_PERMISSIONS = {
 # ── FUNGSI INTERNAL & KEAMANAN ──
 
 def _hash_password(plain: str) -> str:
-    """Hash password sebelum disimpan."""
-    return hashlib.sha256(plain.encode()).hexdigest()
+    """
+    Hash password dengan salt acak menggunakan scrypt (lebih aman dari SHA-256 polos).
+    Format hasil: salt_hex$hash_hex
+    """
+    salt = secrets.token_bytes(16)
+    dk = hashlib.scrypt(plain.encode(), salt=salt, n=16384, r=8, p=1)
+    return salt.hex() + "$" + dk.hex()
+
+def _verify_password(plain: str, stored_hash: str) -> bool:
+    """Verifikasi password terhadap hash yang tersimpan (mendukung format lama & baru)."""
+    if "$" in stored_hash:
+        # Format baru: salt$hash (scrypt)
+        salt_hex, hash_hex = stored_hash.split("$", 1)
+        salt = bytes.fromhex(salt_hex)
+        dk = hashlib.scrypt(plain.encode(), salt=salt, n=16384, r=8, p=1)
+        return dk.hex() == hash_hex
+    else:
+        # Format lama: SHA-256 polos (backward compatibility)
+        return hashlib.sha256(plain.encode()).hexdigest() == stored_hash
 
 def _is_email_taken(email: str) -> bool:
     """Cek apakah email sudah dipakai user lain."""

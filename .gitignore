@@ -1,9 +1,30 @@
-<<<<<<< HEAD
-__pycache__/
-=======
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Data sensitif - JANGAN di-commit ke repository
+data/users.json
+data/sessions.json
+data/grosync.db
+database_barang.json
+database_transaksi.json
+
+# API Keys
+.env
+*.env
+
+# Python cache
 __pycache__/
 *.pyc
-test_product.py
-database/data/categories.json
-database/data/products.json
->>>>>>> d1f779a561d937035964d2c345d7ac85614fec8b
+*.pyo
+*.pyd
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db

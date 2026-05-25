@@ -3,6 +3,11 @@ from controllers.user_controller import requires_permission  # Add 'controllers.
 
 # --- LOGIKA BISNIS INTERNAL ---
 
+def _validate_phone_id(phone: str) -> bool:
+    """Validasi format nomor HP Indonesia: dimulai 08 atau +62, panjang 10-15 digit."""
+    pattern = r"^(\+62|62|08)\d{7,13}$"
+    return bool(re.match(pattern, phone.strip()))
+
 def _calculate_tier(total_spent: float) -> str:
     """Menentukan level tier pelanggan berdasarkan total akumulasi belanja."""
     if total_spent >= 750000: return "Platinum" # Rp 10 Juta
@@ -17,7 +22,10 @@ def create_member(auth_token: str, member_name: str, email: str, phone_number: s
     """[CREATE] Mendaftarkan pelanggan setia baru dan mengembalikan Member ID."""
     if not member_name or not phone_number:
         raise ValueError("Nama dan Nomor HP wajib diisi!")
-        
+
+    if not _validate_phone_id(phone_number):
+        raise ValueError("Format nomor HP tidak valid! Gunakan format: 08xx, +62xx, atau 62xx (10–15 digit)")
+
     # Validasi Nomor HP / Email Kembar
     all_members = loyalty_model.get_all_members()
     for m in all_members:

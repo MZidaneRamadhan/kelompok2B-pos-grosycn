@@ -36,27 +36,40 @@ class DashboardPage(QWidget):
         hdr = QHBoxLayout()
 
         title_col = QVBoxLayout()
-        title_col.addWidget(make_label("Dashboard", 20, bold=True))
-        title_col.addWidget(make_label("Overview of your wholesale operations", 12, color="#64748b"))
+        title_col.addWidget(make_label("Dasbor", 20, bold=True))
+        title_col.addWidget(make_label("Ringkasan operasional grosir Anda", 12, color="#64748b"))
         hdr.addLayout(title_col)
         hdr.addStretch()
 
         time_tabs = QTabWidget()
         time_tabs.setMaximumWidth(380)
-        for label in ("Daily", "Weekly", "Monthly", "Annually"):
+        for label in ("Harian", "Mingguan", "Bulanan", "Tahunan"):
             time_tabs.addTab(QWidget(), label)
         time_tabs.setCurrentIndex(2)
+        # Sambungkan perubahan tab ke slot refresh dashboard
+        time_tabs.currentChanged.connect(self._on_period_changed)
         hdr.addWidget(time_tabs)
 
         return hdr
 
+    def _on_period_changed(self, period_index: int) -> None:
+        """Dipanggil saat tab Harian/Mingguan/Bulanan/Tahunan berubah."""
+        period_labels = ["Harian", "Mingguan", "Bulanan", "Tahunan"]
+        # TODO: Setelah data dinamis dari database tersedia (isu #1),
+        # implementasikan query dengan rentang tanggal berdasarkan period_index:
+        # 0 = hari ini, 1 = 7 hari terakhir, 2 = 30 hari, 3 = 365 hari
+        # Contoh: WHERE order_date BETWEEN ? AND ?
+        period = period_labels[period_index] if period_index < len(period_labels) else "Bulanan"
+        print(f"[Dashboard] Filter periode diubah ke: {period}")
+        # self._refresh_kpi(period_index)  # aktifkan setelah data dinamis tersedia
+
     def _build_kpi_row(self) -> QHBoxLayout:
         row = QHBoxLayout()
         kpis = [
-            ("Total Revenue",   "$185,750", "+18.5%"),
-            ("Bulk Orders",     "342",       "+12.8%"),
-            ("Active Clients",  "127",       "+9.3%"),
-            ("Avg Order Value", "$543.12",   "+5.7%"),
+            ("Total Pendapatan",   "Rp 185.750.000", "+18.5%"),
+            ("Pesanan Grosir",     "342",       "+12.8%"),
+            ("Klien Aktif",  "127",       "+9.3%"),
+            ("Rata-rata Nilai Pesanan", "Rp 543.120",   "+5.7%"),
         ]
         for title, value, change in kpis:
             row.addWidget(self._kpi_card(title, value, change))
@@ -86,11 +99,15 @@ class DashboardPage(QWidget):
         v.setSpacing(4)
         v.addWidget(make_label(title, 11, color="#64748b"))
         v.addWidget(make_label(value, 20, bold=True))
-        v.addWidget(make_label(f"▲ {change} vs last period", 11, color=SUCCESS))
+        # Tampilkan panah naik/turun berdasarkan nilai perubahan
+        is_positive = not str(change).startswith("-")
+        arrow = "▲" if is_positive else "▼"
+        arrow_color = SUCCESS if is_positive else "#DC2626"
+        v.addWidget(make_label(f"{arrow} {change} vs periode lalu", 11, color=arrow_color))
         return w
 
     def _revenue_chart(self) -> QGroupBox:
-        grp = QGroupBox("Revenue Trend ($000s)")
+        grp = QGroupBox("Tren Pendapatan (Rp000)")
         grp.setStyleSheet(
             f"QGroupBox {{ background:{BG_SURFACE}; border:1px solid {BORDER}; border-radius:10px; }}"
         )
@@ -105,14 +122,14 @@ class DashboardPage(QWidget):
             bar.setFixedSize(bar_w, 14)
             bar.setStyleSheet(f"background:{PRIMARY}; border-radius:3px;")
             row.addWidget(bar)
-            row.addWidget(make_label(f"${rev // 1000}k", 11))
+            row.addWidget(make_label(f"Rp{rev // 1000}rb", 11))
             row.addStretch()
             v.addLayout(row)
 
         return grp
 
     def _category_chart(self) -> QGroupBox:
-        grp = QGroupBox("Sales by Category")
+        grp = QGroupBox("Penjualan per Kategori")
         grp.setStyleSheet(
             f"QGroupBox {{ background:{BG_SURFACE}; border:1px solid {BORDER}; border-radius:10px; }}"
         )
@@ -146,7 +163,7 @@ class DashboardPage(QWidget):
         return grp
 
     def _build_orders_chart(self) -> QGroupBox:
-        grp = QGroupBox("Orders by Month")
+        grp = QGroupBox("Pesanan per Bulan")
         grp.setStyleSheet(
             f"QGroupBox {{ background:{BG_SURFACE}; border:1px solid {BORDER}; border-radius:10px; }}"
         )
@@ -170,7 +187,7 @@ class DashboardPage(QWidget):
         return grp
 
     def _recent_transactions(self) -> QGroupBox:
-        grp = QGroupBox("Recent Transactions")
+        grp = QGroupBox("Transaksi Terbaru")
         grp.setStyleSheet(
             f"QGroupBox {{ background:{BG_SURFACE}; border:1px solid {BORDER}; border-radius:10px; }}"
         )
@@ -185,7 +202,7 @@ class DashboardPage(QWidget):
             row.addStretch()
             right = QVBoxLayout()
             right.addWidget(
-                make_label(f"${t['total']:.2f}", 12, bold=True),
+                make_label(f"Rp {t['total']:,.0f}", 12, bold=True),
                 alignment=Qt.AlignmentFlag.AlignRight,
             )
             right.addWidget(
@@ -199,7 +216,7 @@ class DashboardPage(QWidget):
         return grp
 
     def _top_customers(self) -> QGroupBox:
-        grp = QGroupBox("Top Customers")
+        grp = QGroupBox("Pelanggan Teratas")
         grp.setStyleSheet(
             f"QGroupBox {{ background:{BG_SURFACE}; border:1px solid {BORDER}; border-radius:10px; }}"
         )
@@ -219,13 +236,13 @@ class DashboardPage(QWidget):
 
             info = QVBoxLayout()
             info.addWidget(make_label(c["name"], 12, bold=True))
-            info.addWidget(make_label(f"{c['visits']} visits", 11, color="#64748b"))
+            info.addWidget(make_label(f"{c['visits']} kunjungan", 11, color="#64748b"))
             row.addLayout(info)
             row.addStretch()
 
             right = QVBoxLayout()
             right.addWidget(
-                make_label(f"${c['spent']:.2f}", 12, bold=True),
+                make_label(f"Rp {c['spent']:,.0f}", 12, bold=True),
                 alignment=Qt.AlignmentFlag.AlignRight,
             )
             right.addWidget(

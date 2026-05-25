@@ -18,12 +18,11 @@ from views.styles.theme_manager import make_label, card_style
 from views.styles.palettes import DANGER_FG, WARNING_FG, SUCCESS_FG, BG_SURFACE, BORDER
 from models import kasir as backend
 
-
 # Foreground colour per transaction status
 _STATUS_FG = {
     "completed": SUCCESS_FG,
-    "refunded":  DANGER_FG,
-    "pending":   WARNING_FG,
+    "refunded": DANGER_FG,
+    "pending": WARNING_FG,
 }
 
 
@@ -39,8 +38,8 @@ class ReportsPage(QWidget):
         lay.setSpacing(16)
         lay.setContentsMargins(0, 0, 0, 0)
 
-        lay.addWidget(make_label("Reports", 18, bold=True))
-        lay.addWidget(make_label("Generate and export business reports", 12, color="#64748b"))
+        lay.addWidget(make_label("Laporan", 18, bold=True))
+        lay.addWidget(make_label("Buat dan ekspor laporan bisnis", 12, color="#64748b"))
 
         lay.addWidget(self._build_filter_card())
 
@@ -48,7 +47,7 @@ class ReportsPage(QWidget):
         self.stats_row = QHBoxLayout()
         lay.addLayout(self.stats_row)
 
-        self.select_all_cb = QCheckBox("Select All Transactions")
+        self.select_all_cb = QCheckBox("Pilih Semua Transaksi")
         self.select_all_cb.stateChanged.connect(self._toggle_select_all)
         lay.addWidget(self.select_all_cb)
 
@@ -63,36 +62,36 @@ class ReportsPage(QWidget):
     # ── Builder helpers ───────────────────────────────────────────────────────
 
     def _build_filter_card(self) -> QGroupBox:
-        grp = QGroupBox("Report Builder")
+        grp = QGroupBox("Pembuat Laporan")
         grp.setStyleSheet(
             f"QGroupBox {{ background:{BG_SURFACE}; border:1px solid {BORDER}; border-radius:10px; }}"
         )
         fl = QGridLayout(grp)
 
         # Location
-        fl.addWidget(make_label("Location", 11, color="#64748b"), 0, 0)
+        fl.addWidget(make_label("Lokasi", 11, color="#64748b"), 0, 0)
         self.loc_combo = QComboBox()
-        self.loc_combo.addItems(["All Locations"])
+        self.loc_combo.addItems(["Semua Lokasi"])
         self.loc_combo.currentTextChanged.connect(self._refresh)
         fl.addWidget(self.loc_combo, 1, 0)
 
         # Payment method
-        fl.addWidget(make_label("Payment Method", 11, color="#64748b"), 0, 1)
+        fl.addWidget(make_label("Metode Pembayaran", 11, color="#64748b"), 0, 1)
         self.pay_combo = QComboBox()
-        self.pay_combo.addItems(["All Methods", "card", "cash", "mobile"])
+        self.pay_combo.addItems(["Semua Metode", "card", "cash", "mobile"])
         self.pay_combo.currentTextChanged.connect(self._refresh)
         fl.addWidget(self.pay_combo, 1, 1)
 
         # Status
         fl.addWidget(make_label("Status", 11, color="#64748b"), 0, 2)
         self.status_combo = QComboBox()
-        self.status_combo.addItems(["All Statuses", "completed", "refunded", "pending"])
+        self.status_combo.addItems(["Semua Status", "completed", "refunded", "pending"])
         self.status_combo.currentTextChanged.connect(self._refresh)
         fl.addWidget(self.status_combo, 1, 2)
 
         # Export buttons
         export_row = QHBoxLayout()
-        
+
         btn_pdf = QPushButton("⬇  PDF")
         btn_pdf.setObjectName("btnOutline")
         btn_pdf.clicked.connect(self._export_pdf)
@@ -107,7 +106,7 @@ class ReportsPage(QWidget):
         btn_excel.setObjectName("btnOutline")
         btn_excel.clicked.connect(self._export_excel)
         export_row.addWidget(btn_excel)
-        
+
         export_row.addStretch()
         fl.addLayout(export_row, 2, 0, 1, 3)
 
@@ -117,7 +116,7 @@ class ReportsPage(QWidget):
         self.table = QTreeWidget()
         self.table.setColumnCount(6)
         self.table.setHeaderLabels(
-            ["Transaction ID", "Date", "Time", "Total", "Payment", "Status"]
+            ["ID Transaksi", "Date", "Time", "Total", "Payment", "Status"]
         )
         self.table.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.table.setAlternatingRowColors(False)
@@ -136,7 +135,7 @@ class ReportsPage(QWidget):
     def _refresh(self) -> None:
         loc = self.loc_combo.currentText()
         pay = self.pay_combo.currentText()
-        st  = self.status_combo.currentText()
+        st = self.status_combo.currentText()
 
         db_transactions = backend.load_json(backend.FILE_TRANSAKSI)
 
@@ -144,13 +143,13 @@ class ReportsPage(QWidget):
         for transaction_id, txn in db_transactions.items():
             txn_status = str(txn.get("status", "")).lower()
             txn_payment = str(txn.get("payment_method", txn.get("payment", ""))).lower()
-            txn_location = str(txn.get("location", "All Locations"))
+            txn_location = str(txn.get("location", "Semua Lokasi"))
 
-            if loc != "All Locations" and txn_location != loc:
+            if loc != "Semua Lokasi" and txn_location != loc:
                 continue
-            if pay != "All Methods" and txn_payment != pay.lower():
+            if pay != "Semua Metode" and txn_payment != pay.lower():
                 continue
-            if st != "All Statuses" and txn_status != st.lower():
+            if st != "Semua Status" and txn_status != st.lower():
                 continue
 
             rows.append({
@@ -178,8 +177,8 @@ class ReportsPage(QWidget):
 
         for title, val in [
             ("Total Revenue", f"Rp{total_rev:,.0f}"),
-            ("Transactions",  str(len(rows))),
-            ("Avg Order",     f"Rp{avg:,.0f}"),
+            ("Transactions", str(len(rows))),
+            ("Avg Order", f"Rp{avg:,.0f}"),
         ]:
             card = QWidget()
             card.setStyleSheet(card_style() + " min-width:140px;")
@@ -204,7 +203,7 @@ class ReportsPage(QWidget):
             fg = _STATUS_FG.get(t["status"], "#0f172a")
             parent.setText(5, t["status"].capitalize())
             parent.setForeground(5, QColor(fg))
-            
+
             # Store the full transaction data in the item
             parent.setData(0, Qt.ItemDataRole.UserRole, t)
 
@@ -216,38 +215,39 @@ class ReportsPage(QWidget):
         dlg = QDialog(self)
         dlg.setWindowTitle(f"Transaction: {trx['id']}")
         dlg.setFixedWidth(400)
-        
+
         lay = QVBoxLayout(dlg)
         lay.setSpacing(16)
         lay.setContentsMargins(24, 24, 24, 24)
-        
+
         icon = QLabel("🛒")
         icon.setFixedSize(56, 56)
         icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
         icon.setStyleSheet("background:#e0e7ff; color:#4f46e5; border-radius:28px; font-size:24px;")
-        
+
         lay.addWidget(icon, alignment=Qt.AlignmentFlag.AlignHCenter)
         lay.addWidget(make_label(trx["id"], 16, bold=True), alignment=Qt.AlignmentFlag.AlignHCenter)
-        
+
         status_lbl = QLabel(trx["status"].capitalize())
         fg = _STATUS_FG.get(trx["status"], "#0f172a")
-        status_lbl.setStyleSheet(f"background:#f1f5f9; color:{fg}; border-radius:6px; padding:4px 12px; font-weight:bold;")
+        status_lbl.setStyleSheet(
+            f"background:#f1f5f9; color:{fg}; border-radius:6px; padding:4px 12px; font-weight:bold;")
         status_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay.addWidget(status_lbl, alignment=Qt.AlignmentFlag.AlignHCenter)
-        
+
         line = QWidget()
         line.setFixedHeight(1)
         line.setStyleSheet(f"background:{BORDER};")
         lay.addWidget(line)
-        
+
         form = QFormLayout()
         form.addRow(make_label("Date", 11, color="#64748b"), make_label(f"{trx['date']} {trx['time']}", 12))
         form.addRow(make_label("Payment", 11, color="#64748b"), make_label(trx["payment"].capitalize(), 12))
         form.addRow(make_label("Total", 11, color="#64748b"), make_label(f"Rp{trx['total']:,.0f}", 12, bold=True))
         lay.addLayout(form)
-        
+
         lay.addWidget(make_label("Items Purchased", 12, bold=True))
-        
+
         items_lay = QVBoxLayout()
         items_lay.setContentsMargins(12, 12, 12, 12)
         for i in trx.get("items", []):
@@ -257,21 +257,22 @@ class ReportsPage(QWidget):
             item_row.addStretch()
             item_row.addWidget(make_label(f"Rp{i.get('subtotal', 0):,.0f}", 11))
             items_lay.addLayout(item_row)
-            
+
         items_container = QWidget()
         items_container.setStyleSheet(f"background:{BG_SURFACE}; border:1px solid {BORDER}; border-radius:8px;")
         items_container.setLayout(items_lay)
         lay.addWidget(items_container)
-        
+
         close_btn = QPushButton("Tutup")
-        close_btn.setStyleSheet(f"QPushButton {{ background:transparent; border:1px solid {BORDER}; border-radius:8px; padding:7px 16px; font-size:12px;}} QPushButton:hover {{ background:#f1f5f9; }}")
+        close_btn.setStyleSheet(
+            f"QPushButton {{ background:transparent; border:1px solid {BORDER}; border-radius:8px; padding:7px 16px; font-size:12px;}} QPushButton:hover {{ background:#f1f5f9; }}")
         close_btn.clicked.connect(dlg.accept)
-        
+
         btn_row = QHBoxLayout()
         btn_row.addStretch()
         btn_row.addWidget(close_btn)
         lay.addLayout(btn_row)
-        
+
         dlg.exec()
 
     def _get_selected_transactions(self) -> list[dict]:
@@ -296,18 +297,23 @@ class ReportsPage(QWidget):
             return
         if not path.lower().endswith('.csv'):
             path += '.csv'
-            
+
         try:
             with open(path, mode="w", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
-                writer.writerow(["Transaction ID", "Date", "Time", "Payment", "Status", "Total", "Item Name", "Item Qty", "Item Subtotal"])
+                writer.writerow(["ID Transaksi", "Date", "Time", "Payment", "Status", "Total", "Item Name", "Item Qty",
+                                 "Item Subtotal"])
                 for trx in selected:
                     if not trx["items"]:
-                        writer.writerow([trx["id"], trx["date"], trx["time"], trx["payment"], trx["status"], trx["total"], "", "", ""])
+                        writer.writerow(
+                            [trx["id"], trx["date"], trx["time"], trx["payment"], trx["status"], trx["total"], "", "",
+                             ""])
                     else:
                         for idx, item in enumerate(trx["items"]):
                             if idx == 0:
-                                writer.writerow([trx["id"], trx["date"], trx["time"], trx["payment"], trx["status"], trx["total"], item["name"], item["qty"], item["subtotal"]])
+                                writer.writerow(
+                                    [trx["id"], trx["date"], trx["time"], trx["payment"], trx["status"], trx["total"],
+                                     item["name"], item["qty"], item["subtotal"]])
                             else:
                                 writer.writerow(["", "", "", "", "", "", item["name"], item["qty"], item["subtotal"]])
             self.status_msg.emit("Successfully exported CSV!")
@@ -325,23 +331,26 @@ class ReportsPage(QWidget):
             return
         if not path.lower().endswith('.xlsx'):
             path += '.xlsx'
-            
+
         try:
             wb = openpyxl.Workbook()
             ws = wb.active
             ws.title = "Transactions"
-            ws.append(["Transaction ID", "Date", "Time", "Payment", "Status", "Total", "Item Name", "Item Qty", "Item Subtotal"])
-            
+            ws.append(["ID Transaksi", "Date", "Time", "Payment", "Status", "Total", "Item Name", "Item Qty",
+                       "Item Subtotal"])
+
             for trx in selected:
                 if not trx["items"]:
-                    ws.append([trx["id"], trx["date"], trx["time"], trx["payment"], trx["status"], trx["total"], "", "", ""])
+                    ws.append(
+                        [trx["id"], trx["date"], trx["time"], trx["payment"], trx["status"], trx["total"], "", "", ""])
                 else:
                     for idx, item in enumerate(trx["items"]):
                         if idx == 0:
-                            ws.append([trx["id"], trx["date"], trx["time"], trx["payment"], trx["status"], trx["total"], item["name"], item["qty"], item["subtotal"]])
+                            ws.append([trx["id"], trx["date"], trx["time"], trx["payment"], trx["status"], trx["total"],
+                                       item["name"], item["qty"], item["subtotal"]])
                         else:
                             ws.append(["", "", "", "", "", "", item["name"], item["qty"], item["subtotal"]])
-            
+
             wb.save(path)
             self.status_msg.emit("Successfully exported Excel!")
         except Exception as e:
@@ -358,12 +367,12 @@ class ReportsPage(QWidget):
             return
         if not path.lower().endswith('.pdf'):
             path += '.pdf'
-            
+
         try:
             html = "<h1>Transaction Report</h1>"
             html += "<table border='1' cellspacing='0' cellpadding='5' width='100%'>"
             html += "<tr><th>ID</th><th>Date</th><th>Total</th><th>Payment</th><th>Status</th></tr>"
-            
+
             for trx in selected:
                 html += f"<tr><td><b>{trx['id']}</b></td><td>{trx['date']} {trx['time']}</td>"
                 html += f"<td>{trx['total']}</td><td>{trx['payment']}</td><td>{trx['status']}</td></tr>"
@@ -373,12 +382,12 @@ class ReportsPage(QWidget):
                     for item in trx["items"]:
                         html += f"<li>{item['name']} - {item['qty']} - {item['subtotal']}</li>"
                     html += "</ul></td></tr>"
-                    
+
             html += "</table>"
-            
+
             doc = QTextDocument()
             doc.setHtml(html)
-            
+
             printer = QPdfWriter(path)
             printer.setPageSize(QPageSize(QPageSize.PageSizeId.A4))
             doc.print(printer)
