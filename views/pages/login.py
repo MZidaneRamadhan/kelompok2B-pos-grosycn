@@ -105,7 +105,7 @@ class LoginWidget(QWidget):
         lay.addSpacing(28)
 
         # ── Email ─────────────────────────────────────────────────────────────
-        lay.addWidget(self._field_label("Email or username"))
+        lay.addWidget(self._field_label("Email atau nama pengguna"))
         lay.addSpacing(6)
         self.username = QLineEdit()
         self.username.setPlaceholderText("you@example.com")
@@ -120,12 +120,12 @@ class LoginWidget(QWidget):
         pwd_header = QHBoxLayout()
         pwd_header.addWidget(self._field_label("Password"))
         pwd_header.addStretch()
-        forgot = QLabel("<a style='color:{c}; text-decoration:none;' href='#'>Forgot password?</a>".format(c=PRIMARY))
-        forgot.setStyleSheet("border: none; background: transparent; font-size: 12px;")
-        forgot.setTextFormat(Qt.TextFormat.RichText)
-        forgot.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
-        forgot.setOpenExternalLinks(False)
-        pwd_header.addWidget(forgot)
+        #forgot = QLabel("<a style='color:{c}; text-decoration:none;' href='#'>Forgot password?</a>".format(c=PRIMARY))
+        #forgot.setStyleSheet("border: none; background: transparent; font-size: 12px;")
+        #forgot.setTextFormat(Qt.TextFormat.RichText)
+        #forgot.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
+        #forgot.setOpenExternalLinks(False)
+        #pwd_header.addWidget(forgot)
         lay.addLayout(pwd_header)
 
         lay.addSpacing(6)
@@ -162,7 +162,7 @@ class LoginWidget(QWidget):
         lay.addSpacing(24)
 
         # ── Sign in button ────────────────────────────────────────────────────
-        self.login_btn = QPushButton("Sign in")
+        self.login_btn = QPushButton("Masuk")
         self.login_btn.setFixedHeight(42)
         self.login_btn.setEnabled(False)
         self.login_btn.setStyleSheet(

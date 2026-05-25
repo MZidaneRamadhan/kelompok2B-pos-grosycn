@@ -1,6 +1,7 @@
 import json
 import uuid
 from pathlib import Path
+from datetime import datetime, timedelta
 
 DB_PATH = Path("data/users.json")
 SESSION_DB_PATH = Path("data/sessions.json") # Tambahan untuk Sesi Login
@@ -106,10 +107,32 @@ def delete_user(user_id: str) -> bool:
 
 # ── MANAJEMEN SESI (LOGIN/LOGOUT) ──
 
+SESSION_EXPIRY_HOURS = 8  # Token kadaluarsa setelah 8 jam
+
+def _purge_expired_sessions(sessions: dict) -> dict:
+    """Hapus semua sesi yang sudah kadaluarsa."""
+    now = datetime.now()
+    valid = {}
+    for token, data in sessions.items():
+        if isinstance(data, dict):
+            created_at_str = data.get("created_at", "")
+            try:
+                created_at = datetime.fromisoformat(created_at_str)
+                if now - created_at < timedelta(hours=SESSION_EXPIRY_HOURS):
+                    valid[token] = data
+            except (ValueError, TypeError):
+                pass  # Token format lama tanpa timestamp, buang
+        # Token format lama (hanya string user_id) - buang
+    return valid
+
 def save_session(token: str, user_id: str) -> None:
     """[CREATE] Simpan token login."""
     sessions = _load_sessions()
-    sessions[token] = user_id
+    sessions = _purge_expired_sessions(sessions)
+    sessions[token] = {
+        "user_id": user_id,
+        "created_at": datetime.now().isoformat()
+    }
     _save_sessions(sessions)
 
 def delete_session(token: str) -> bool:
@@ -122,6 +145,19 @@ def delete_session(token: str) -> bool:
     return False
 
 def get_user_id_by_token(token: str) -> str:
-    """[READ] Ambil User ID dari token."""
+    """[READ] Ambil User ID dari token. Kembalikan string kosong jika token tidak ada atau kadaluarsa."""
     sessions = _load_sessions()
-    return sessions.get(token, "")
+    data = sessions.get(token)
+    if data is None:
+        return ""
+    if isinstance(data, dict):
+        created_at_str = data.get("created_at", "")
+        try:
+            created_at = datetime.fromisoformat(created_at_str)
+            if datetime.now() - created_at >= timedelta(hours=SESSION_EXPIRY_HOURS):
+                return ""  # Token kadaluarsa
+        except (ValueError, TypeError):
+            return ""
+        return data.get("user_id", "")
+    # Format lama (string) - anggap tidak valid
+    return ""

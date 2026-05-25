@@ -57,11 +57,11 @@ class PaymentDialog(QDialog):
         lay.setSpacing(14)
         lay.setContentsMargins(24, 24, 24, 24)
 
-        lay.addWidget(make_label("Complete Payment", 16, bold=True))
+        lay.addWidget(make_label("Selesaikan Pembayaran", 16, bold=True))
         lay.addWidget(h_line())
 
         # ── Payment method ────────────────────────────────────────────────────
-        lay.addWidget(make_label("Payment Method", 12, color=TEXT_SECONDARY))
+        lay.addWidget(make_label("Methode Pembayaran", 12, color=TEXT_SECONDARY))
 
         methods_row = QHBoxLayout()
         self._pay_btns: dict[str, QPushButton] = {}
@@ -607,11 +607,21 @@ class POSPage(QWidget):
         for c_item in cart_items:
             if c_item["product_id"] == item["productId"]:
                 new_qty = c_item["qty"] + delta
-                if new_qty > 0:
-                    c_item["qty"]      = new_qty
-                    c_item["subtotal"] = c_item["price"] * new_qty
-                else:
+                if new_qty <= 0:
                     self._remove(item)
+                    break
+                # Validasi stok: cek ketersediaan sebelum menaikkan qty
+                if delta > 0:
+                    db_products = backend.load_json(backend.FILE_BARANG)
+                    prod = db_products.get(c_item["product_id"], {})
+                    stok_tersedia = prod.get("stock", 0)
+                    if new_qty > stok_tersedia:
+                        self.status_msg.emit(
+                            f"Stok {c_item['name']} tidak cukup! (Tersedia: {stok_tersedia})"
+                        )
+                        break
+                c_item["qty"] = new_qty
+                c_item["subtotal"] = c_item["price"] * new_qty
                 break
         self._refresh_cart()
 

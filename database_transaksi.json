@@ -387,5 +387,71 @@
         "total_amount": 5123123.0,
         "timestamp": "2026-05-11 06:45:25",
         "status": "COMPLETED"
+    },
+    "TRX-20260525064003": {
+        "order_id": "ORD-20260525-134",
+        "customer_name": "Pelanggan Umum",
+        "payment_method": "cash",
+        "is_member": false,
+        "items": [
+            {
+                "product_id": "PRD-1",
+                "name": "Sosis",
+                "price": 32000.0,
+                "qty": 13,
+                "subtotal": 416000.0,
+                "image": "\ud83d\udce6",
+                "productName": "Sosis",
+                "unit": "piece",
+                "productId": "PRD-1"
+            }
+        ],
+        "total_amount": 416000.0,
+        "timestamp": "2026-05-25 06:40:03",
+        "status": "COMPLETED"
+    },
+    "TRX-20260525064025": {
+        "order_id": "ORD-20260525-960",
+        "customer_name": "Pelanggan Umum",
+        "payment_method": "card",
+        "is_member": false,
+        "items": [
+            {
+                "product_id": "PRD-4",
+                "name": "Minyak Owo",
+                "price": 42000.0,
+                "qty": 9,
+                "subtotal": 378000.0,
+                "image": "\ud83d\udce6",
+                "productName": "Minyak Owo",
+                "unit": "piece",
+                "productId": "PRD-4"
+            }
+        ],
+        "total_amount": 378000.0,
+        "timestamp": "2026-05-25 06:40:25",
+        "status": "COMPLETED"
+    },
+    "TRX-20260525064034": {
+        "order_id": "ORD-20260525-027",
+        "customer_name": "Pelanggan Umum",
+        "payment_method": "card",
+        "is_member": false,
+        "items": [
+            {
+                "product_id": "PRD-7",
+                "name": "baso",
+                "price": 5123123.0,
+                "qty": 5,
+                "subtotal": 25615615.0,
+                "image": "\ud83d\udce6",
+                "productName": "baso",
+                "unit": "piece",
+                "productId": "PRD-7"
+            }
+        ],
+        "total_amount": 25615615.0,
+        "timestamp": "2026-05-25 06:40:34",
+        "status": "COMPLETED"
     }
 }

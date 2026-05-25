@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
 
 from views.components.header import Header
 from views.components.sidebar import Sidebar
+import config
 from views.pages.dashboard import DashboardPage
 from views.pages.pos import POSPage
 from views.pages.storage import StoragePage
@@ -51,7 +52,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self._auth_token = auth_token
         self._username   = username
-        self.setWindowTitle("RetailPOS – Semi-Online POS System")
+        self.setWindowTitle(f"{config.APP_NAME} — Sistem POS")
         self.resize(1280, 780)
         self.setMinimumSize(1000, 640)
 
