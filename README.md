@@ -7,7 +7,7 @@ Sistem ini mencakup fitur manajemen produk, transaksi kasir, laporan penjualan, 
 
 Tim Pengembang
 
-- Ahmad Bukhari                        (251524033) 
+- Ahmad Bukhori                        (251524033) 
 - Amor Azzam Imani                     (251524038)
 - Muhammad Adhiya Pasya                (251524054)
 - Muhammad Zidane Ramadhan Okaviantoo  (251524058)
