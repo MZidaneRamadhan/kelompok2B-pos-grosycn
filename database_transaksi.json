@@ -1,0 +1,127 @@
+{
+    "TRX-20260427074251": {
+        "order_id": "CART-KASIR-001",
+        "customer_name": "Warung Kelontong Maju",
+        "payment_method": "CASH",
+        "is_member": true,
+        "items": [
+            {
+                "product_id": "PRD-1",
+                "name": "Minyak Goreng 2L",
+                "price": 35000,
+                "qty": 2,
+                "subtotal": 70000
+            },
+            {
+                "product_id": "PRD-2",
+                "name": "Gula Pasir 1Kg",
+                "price": 15000,
+                "qty": 3,
+                "subtotal": 45000
+            }
+        ],
+        "total_amount": 115000,
+        "timestamp": "2026-04-27 07:42:51",
+        "status": "COMPLETED"
+    },
+    "TRX-20260427074820": {
+        "order_id": "CART-KASIR-001",
+        "customer_name": "Warung Kelontong Maju",
+        "payment_method": "CASH",
+        "is_member": true,
+        "items": [
+            {
+                "product_id": "PRD-1",
+                "name": "Minyak Goreng 2L",
+                "price": 35000,
+                "qty": 2,
+                "subtotal": 70000
+            },
+            {
+                "product_id": "PRD-2",
+                "name": "Gula Pasir 1Kg",
+                "price": 15000,
+                "qty": 3,
+                "subtotal": 45000
+            }
+        ],
+        "total_amount": 115000,
+        "timestamp": "2026-04-27 07:48:20",
+        "status": "COMPLETED"
+    },
+    "TRX-20260427075114": {
+        "order_id": "CART-KASIR-001",
+        "customer_name": "Warung Kelontong Maju",
+        "payment_method": "CASH",
+        "is_member": true,
+        "items": [
+            {
+                "product_id": "PRD-1",
+                "name": "Minyak Goreng 2L",
+                "price": 35000,
+                "qty": 2,
+                "subtotal": 70000
+            },
+            {
+                "product_id": "PRD-2",
+                "name": "Gula Pasir 1Kg",
+                "price": 15000,
+                "qty": 3,
+                "subtotal": 45000
+            }
+        ],
+        "total_amount": 115000,
+        "timestamp": "2026-04-27 07:51:14",
+        "status": "COMPLETED"
+    },
+    "TRX-20260427075153": {
+        "order_id": "CART-KASIR-001",
+        "customer_name": "Warung Kelontong Maju",
+        "payment_method": "CASH",
+        "is_member": true,
+        "items": [
+            {
+                "product_id": "PRD-1",
+                "name": "Minyak Goreng 2L",
+                "price": 35000,
+                "qty": 2,
+                "subtotal": 70000
+            },
+            {
+                "product_id": "PRD-2",
+                "name": "Gula Pasir 1Kg",
+                "price": 15000,
+                "qty": 3,
+                "subtotal": 45000
+            }
+        ],
+        "total_amount": 115000,
+        "timestamp": "2026-04-27 07:51:53",
+        "status": "COMPLETED"
+    },
+    "TRX-20260427075209": {
+        "order_id": "CART-KASIR-001",
+        "customer_name": "Warung Kelontong Maju",
+        "payment_method": "CASH",
+        "is_member": true,
+        "items": [
+            {
+                "product_id": "PRD-1",
+                "name": "Minyak Goreng 2L",
+                "price": 35000,
+                "qty": 2,
+                "subtotal": 70000
+            },
+            {
+                "product_id": "PRD-2",
+                "name": "Gula Pasir 1Kg",
+                "price": 15000,
+                "qty": 3,
+                "subtotal": 45000
+            }
+        ],
+        "total_amount": 115000,
+        "timestamp": "2026-04-27 07:52:09",
+        "status": "COMPLETED"
+    }
+}
