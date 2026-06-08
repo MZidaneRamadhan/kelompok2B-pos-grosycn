@@ -13,7 +13,6 @@ import config
 from views.pages.dashboard import DashboardPage
 from views.pages.pos import POSPage
 from views.pages.storage import StoragePage
-from views.pages.supplier_product import SupplierProductDialog
 from views.pages.productcategory import CategoryProductPage
 from views.pages.suppliers import SuppliersPage
 from views.pages.loyalty import LoyaltyPage
@@ -27,7 +26,6 @@ _PAGE_TITLES = [
     "Point of Sale",
     "Inventory Management",
     "Product Category Management",
-    "Supplier Product Management",
     "Supplier Management",
     "Loyalty Program",
     "Reports",
@@ -101,7 +99,7 @@ class MainWindow(QMainWindow):
         self.loyalty_page = LoyaltyPage(auth_token=self._auth_token)
         self.reports_page = ReportsPage()
         self.user_mgmt_page = UserManagementPage()
-        self.supplier_product_page = SupplierProductDialog()
+
         self._pages = [
             self.dashboard_page,
             self.pos_page,
@@ -111,7 +109,6 @@ class MainWindow(QMainWindow):
             self.loyalty_page,
             self.reports_page,
             self.user_mgmt_page,
-            self.supplier_product_page,
         ]
         for page in self._pages:
             self.stack.addWidget(page)

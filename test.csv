@@ -1,0 +1,7 @@
+Transaction ID,Date,Time,Payment,Total,Item Name,Item Qty,Item Subtotal
+ORD-20260607-001,2026-06-07,23:17,card,65000.0,Slice Beef 500g,1,65000.0
+ORD-20260525-001,2026-05-25,11:36,card,52000.0,Sosis 500gr,1,32000.0
+,,,,,Kue Kacang 500Gr,1,20000.0
+ORD-20260525-001,2026-05-25,11:36,cash,40000.0,Kue Kacang 500Gr,2,40000.0
+ORD-20260525-001,2026-05-25,11:22,cash,135000.0,Minyak Goreng Filma,3,135000.0
+ORD-20260525-001,2026-05-25,10:47,card,45000.0,Minyak Goreng Filma,1,45000.0

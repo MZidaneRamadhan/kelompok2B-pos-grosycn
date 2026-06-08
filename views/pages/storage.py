@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# views/pages/storage.py
+# views/pages/storage.py  (updated — tambahan fitur Supplier Product)
 # ─────────────────────────────────────────────────────────────────────────────
 
 from PyQt6.QtWidgets import (
@@ -18,20 +18,22 @@ from controllers.barang_controller import (
     get_all_products, get_all_categories,
     create_product, update_product, delete_product,
 )
+from controllers.supplier_product_controller import (
+    get_suppliers_for_product,
+    get_all_suppliers_with_linked_flag,
+    link_supplier_to_product,
+    unlink_supplier_from_product,
+)
 
-# Threshold stok rendah (bisa dipindah ke config global)
 LOW_STOCK_THRESHOLD = 10
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Dialog: Tambah / Edit Product
+# Dialog: Tambah / Edit Product  (tidak diubah)
 # ─────────────────────────────────────────────────────────────────────────────
 
 class ProductDialog(QDialog):
-    """
-    Dialog untuk CREATE (product=None) atau UPDATE (product=dict).
-    Semua field divalidasi sebelum diterima.
-    """
+    """Dialog CREATE (product=None) atau UPDATE (product=dict)."""
 
     def __init__(self, parent=None, product: dict | None = None) -> None:
         super().__init__(parent)
@@ -44,7 +46,6 @@ class ProductDialog(QDialog):
         lay = QVBoxLayout(self)
         lay.setSpacing(12)
 
-        # ── Form ──────────────────────────────────────────────────────────────
         form = QFormLayout()
         form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
 
@@ -87,7 +88,6 @@ class ProductDialog(QDialog):
         self._error_lbl.hide()
         lay.addWidget(self._error_lbl)
 
-        # ── Buttons ───────────────────────────────────────────────────────────
         btns = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
@@ -95,20 +95,15 @@ class ProductDialog(QDialog):
         btns.rejected.connect(self.reject)
         lay.addWidget(btns)
 
-        # ── Pre-fill bila edit ─────────────────────────────────────────────
         if is_edit:
             self._prefill(product)
 
-    # ── Helpers ───────────────────────────────────────────────────────────────
-
     def _load_categories(self) -> None:
-        """Mengisi combo box dengan data category dari database."""
         self._categories = get_all_categories()
         for cat in self._categories:
             self.category_combo.addItem(cat["category"], userData=cat["id"])
 
     def _prefill(self, p: dict) -> None:
-        """Mengisi form dengan data product yang akan diedit."""
         self.name_input.setText(p.get("product_name", ""))
         self.sell_price_input.setValue(p.get("sell_price", 0))
         self.buy_price_input.setValue(p.get("buy_price", 0))
@@ -116,7 +111,6 @@ class ProductDialog(QDialog):
         self.stock_storage_input.setValue(p.get("stock_storage", 0))
         self.desc_input.setPlainText(p.get("description", ""))
 
-        # Set combo ke category yang sesuai
         cat_id = p.get("category_id")
         for i, cat in enumerate(self._categories):
             if cat["id"] == cat_id:
@@ -124,7 +118,6 @@ class ProductDialog(QDialog):
                 break
 
     def _on_accept(self) -> None:
-        # Reset dulu
         self.sell_price_input.setStyleSheet("")
         self.buy_price_input.setStyleSheet("")
         self._error_lbl.hide()
@@ -148,10 +141,7 @@ class ProductDialog(QDialog):
 
         self.accept()
 
-    # ── Getter hasil form ──────────────────────────────────────────────────────
-
     def get_data(self) -> dict:
-        """Mengembalikan data form sebagai dict siap dipakai controller."""
         return {
             "product_name":  self.name_input.text().strip(),
             "category_id":   self.category_combo.currentData(),
@@ -164,7 +154,200 @@ class ProductDialog(QDialog):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Halaman utama: Inventory / Storage
+# Dialog BARU: Kelola Supplier untuk satu Product
+# ─────────────────────────────────────────────────────────────────────────────
+
+class SupplierProductDialog(QDialog):
+    """
+    Menampilkan daftar supplier yang sudah terhubung ke satu product,
+    dan memungkinkan user menambah / melepas relasi.
+
+    Layout:
+    ┌─────────────────────────────────────────────────┐
+    │  Product: Indomie Goreng                        │
+    ├──── Supplier terhubung ─────────────────────────┤
+    │  [tabel: Nama | Rating | Alamat | Tanggal | ✕] │
+    ├──── Tambah Supplier ────────────────────────────┤
+    │  ComboBox (supplier belum terhubung)  [Tambah]  │
+    └─────────────────────────────────────────────────┘
+    """
+
+    def __init__(self, parent=None, product: dict | None = None) -> None:
+        super().__init__(parent)
+        if product is None:
+            raise ValueError("product harus diberikan")
+
+        self._product = product
+        self._product_id = product["id"]
+
+        self.setWindowTitle(f"Supplier — {product['product_name']}")
+        self.setMinimumSize(680, 420)
+
+        root = QVBoxLayout(self)
+        root.setSpacing(14)
+
+        # ── Judul ─────────────────────────────────────────────────────────────
+        title = make_label(f"🏷 {product['product_name']}", 14, bold=True)
+        root.addWidget(title)
+
+        # ── Tabel supplier terhubung ──────────────────────────────────────────
+        root.addWidget(make_label("Supplier yang menyediakan product ini:", 11, color="#64748b"))
+        self._table = self._build_linked_table()
+        root.addWidget(self._table)
+
+        # ── Tambah supplier baru ──────────────────────────────────────────────
+        add_row = QHBoxLayout()
+        add_row.addWidget(make_label("Tambah Supplier:", 11))
+
+        self._supplier_combo = QComboBox()
+        self._supplier_combo.setMinimumWidth(260)
+        add_row.addWidget(self._supplier_combo, stretch=1)
+
+        add_btn = QPushButton("＋ Tambah")
+        add_btn.setFixedHeight(34)
+        add_btn.setStyleSheet(
+            "QPushButton { background-color: #16a34a; color: white; border: none;"
+            " border-radius: 4px; padding: 0 14px; font-size: 12px; font-weight: 600; }"
+            "QPushButton:hover { background-color: #15803d; }"
+            "QPushButton:pressed { background-color: #166534; }"
+        )
+        add_btn.clicked.connect(self._add_supplier)
+        add_row.addWidget(add_btn)
+        root.addLayout(add_row)
+
+        # ── Tutup ─────────────────────────────────────────────────────────────
+        close_btn = QPushButton("Tutup")
+        close_btn.clicked.connect(self.accept)
+        root.addWidget(close_btn, alignment=Qt.AlignmentFlag.AlignRight)
+
+        self._refresh()
+
+    # ── Builder ───────────────────────────────────────────────────────────────
+
+    def _build_linked_table(self) -> QTableWidget:
+        t = QTableWidget()
+        t.setColumnCount(5)
+        t.setHorizontalHeaderLabels(["Nama Supplier", "Rating", "Alamat", "Tanggal Terhubung", ""])
+        hh = t.horizontalHeader()
+        hh.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)   # Nama → fleksibel
+        hh.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)     # Rating → tetap
+        hh.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)   # Alamat → fleksibel
+        hh.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)     # Tanggal → tetap
+        hh.setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)     # Tombol → tetap
+        t.setColumnWidth(1, 70)
+        t.setColumnWidth(3, 130)
+        t.setColumnWidth(4, 50)
+        t.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        t.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
+        t.setAlternatingRowColors(True)
+        t.verticalHeader().setDefaultSectionSize(44)
+        t.verticalHeader().hide()   # sembunyikan nomor baris di kiri
+        return t
+
+    # ── Data refresh ──────────────────────────────────────────────────────────
+
+    def _refresh(self) -> None:
+        """Muat ulang tabel + combo setiap ada perubahan."""
+        self._load_linked_table()
+        self._load_combo()
+
+    def _load_linked_table(self) -> None:
+        # Reset span dulu sebelum apapun
+        self._table.clearSpans()
+        
+        rows = get_suppliers_for_product(self._product_id)
+        self._table.setRowCount(max(len(rows), 1))
+
+        if not rows:
+            self._table.setRowCount(1)
+            self._table.setSpan(0, 0, 1, 5)
+            placeholder = QTableWidgetItem("Belum ada supplier yang terhubung")
+            placeholder.setForeground(QColor("#94a3b8"))
+            placeholder.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self._table.setItem(0, 0, placeholder)
+            return  # keluar lebih awal, jangan lanjut ke loop
+
+        for r, s in enumerate(rows):
+            def cell(text):
+                item = QTableWidgetItem(str(text))
+                item.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+                return item
+
+            self._table.setItem(r, 0, cell(s["supplier_name"]))
+
+            rating_item = cell(f"⭐ {s['rating']:.1f}" if s.get("rating") else "—")
+            rating_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self._table.setItem(r, 1, rating_item)
+
+            self._table.setItem(r, 2, cell(s.get("address") or "—"))
+            self._table.setItem(r, 3, cell((s.get("supplied_date") or "")[:10]))
+
+            del_btn = QPushButton("✕")
+            del_btn.setFixedSize(32, 32)
+            del_btn.setToolTip(f"Lepas {s['supplier_name']} dari product ini")
+            del_btn.setStyleSheet(
+                "QPushButton { background-color: #ef4444; color: white; border: none;"
+                " border-radius: 4px; font-weight: bold; }"
+                "QPushButton:hover { background-color: #dc2626; }"
+            )
+            link_id = s["link_id"]
+            supplier_name = s["supplier_name"]
+            del_btn.clicked.connect(
+                lambda _, lid=link_id, sn=supplier_name: self._remove_supplier(lid, sn)
+            )
+
+            wrap = QWidget()
+            wrap.setStyleSheet("background: transparent;")
+            wl = QHBoxLayout(wrap)
+            wl.setContentsMargins(8, 6, 8, 6)
+            wl.addWidget(del_btn, alignment=Qt.AlignmentFlag.AlignCenter)
+            self._table.setCellWidget(r, 4, wrap)
+
+    def _load_combo(self) -> None:
+        """Isi combo hanya dengan supplier yang BELUM terhubung."""
+        self._supplier_combo.clear()
+        self._available_suppliers = [
+            s for s in get_all_suppliers_with_linked_flag(self._product_id)
+            if not s["is_linked"]
+        ]
+        if self._available_suppliers:
+            for s in self._available_suppliers:
+                label = f"{s['supplier_name']}  (⭐ {s.get('rating', 0):.1f})"
+                self._supplier_combo.addItem(label, userData=s["id"])
+        else:
+            self._supplier_combo.addItem("— Semua supplier sudah terhubung —")
+
+    # ── Aksi ──────────────────────────────────────────────────────────────────
+
+    def _add_supplier(self) -> None:
+        supplier_id = self._supplier_combo.currentData()
+        if supplier_id is None:
+            QMessageBox.information(self, "Info", "Tidak ada supplier yang bisa ditambahkan.")
+            return
+        try:
+            link_supplier_to_product(supplier_id, self._product_id)
+            self._refresh()
+        except ValueError as e:
+            QMessageBox.warning(self, "Gagal", str(e))
+
+    def _remove_supplier(self, link_id: int, supplier_name: str) -> None:
+        confirm = QMessageBox.question(
+            self,
+            "Konfirmasi",
+            f"Lepas '{supplier_name}' dari product ini?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if confirm == QMessageBox.StandardButton.Yes:
+            try:
+                unlink_supplier_from_product(link_id)
+                self._refresh()
+            except ValueError as e:
+                QMessageBox.warning(self, "Gagal", str(e))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Halaman utama: Inventory / Storage  (kolom Aksi diperluas)
 # ─────────────────────────────────────────────────────────────────────────────
 
 class StoragePage(QWidget):
@@ -194,31 +377,28 @@ class StoragePage(QWidget):
         lay.addLayout(self._build_controls())
         lay.addWidget(self._build_table())
 
+        self._all_products: list[dict] = []
         self._refresh()
 
-    # ── Sections ──────────────────────────────────────────────────────────────
+    # ── Builder UI ────────────────────────────────────────────────────────────
 
     def _build_header(self) -> QHBoxLayout:
-        hdr = QHBoxLayout()
-
-        info = QVBoxLayout()
-        info.addWidget(make_label("Inventory Management", 18, bold=True))
-        info.addWidget(make_label("Manage stock levels and supplier relationships", 12, color="#64748b"))
-        hdr.addLayout(info)
-        hdr.addStretch()
-
-        add_btn = QPushButton("+ Add Product")
+        row = QHBoxLayout()
+        row.addWidget(make_label("📦 Inventory", 18, bold=True))
+        row.addStretch()
+        add_btn = QPushButton("＋ Tambah Product")
+        add_btn.setFixedHeight(36)
+        add_btn.setStyleSheet(
+            "QPushButton { background-color: #2563eb; color: white; border: none;"
+            " border-radius: 6px; padding: 0 16px; font-size: 13px; font-weight: 600; }"
+            "QPushButton:hover { background-color: #1d4ed8; }"
+        )
         add_btn.clicked.connect(self._open_create_dialog)
-        hdr.addWidget(add_btn)
-
-        return hdr
+        row.addWidget(add_btn)
+        return row
 
     def _build_stats(self) -> tuple[QHBoxLayout, dict]:
-        from PyQt6.QtWidgets import QWidget, QSizePolicy
-        from views.styles.theme_manager import card_style
-
         row = QHBoxLayout()
-        row.setSpacing(12)
         widgets: dict[str, QLabel] = {}
 
         for key, title in [
@@ -263,26 +443,28 @@ class StoragePage(QWidget):
         hh = self.table.horizontalHeader()
         hh.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         hh.setSectionResizeMode(8, QHeaderView.ResizeMode.Fixed)
-        self.table.setColumnWidth(8, 200)
+        # Kolom Aksi diperlebar: Edit + Hapus + Supplier
+        self.table.setColumnWidth(8, 290)
         self.table.setAlternatingRowColors(True)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
         self.table.verticalHeader().setDefaultSectionSize(80)
         return self.table
 
-    # ── Inline action widget per baris ───────────────────────────────────────
+    # ── Action widget per baris ───────────────────────────────────────────────
 
     def _make_action_widget(self, product: dict) -> QWidget:
         """
-        Membuat widget berisi tombol Edit dan Hapus untuk satu baris tabel.
-        product di-capture via default argument agar tidak terjadi closure bug.
+        Tiga tombol per baris:
+          [✏ Edit]  [🏪 Supplier]  [🗑]
         """
         container = QWidget()
         container.setStyleSheet("background: transparent;")
         hlay = QHBoxLayout(container)
-        hlay.setContentsMargins(10, 11, 10, 11)
-        hlay.setSpacing(11)
+        hlay.setContentsMargins(8, 10, 8, 10)
+        hlay.setSpacing(8)
 
+        # ── Edit ──────────────────────────────────────────────────────────────
         edit_btn = QPushButton("✏ Edit")
         edit_btn.setFixedHeight(36)
         edit_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -295,12 +477,27 @@ class StoragePage(QWidget):
         edit_btn.clicked.connect(lambda _, p=product: self._open_edit_dialog(p))
         hlay.addWidget(edit_btn)
 
+        # ── Supplier ──────────────────────────────────────────────────────────
+        sup_btn = QPushButton("🏪 Supplier")
+        sup_btn.setFixedHeight(36)
+        sup_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        sup_btn.setToolTip("Lihat & kelola supplier untuk produk ini")
+        sup_btn.setStyleSheet(
+            "QPushButton { background-color: #7c3aed; color: white; border: none;"
+            " border-radius: 4px; padding: 0 8px; font-size: 12px; }"
+            "QPushButton:hover { background-color: #6d28d9; }"
+            "QPushButton:pressed { background-color: #5b21b6; }"
+        )
+        sup_btn.clicked.connect(lambda _, p=product: self._open_supplier_dialog(p))
+        hlay.addWidget(sup_btn)
+
+        # ── Hapus ─────────────────────────────────────────────────────────────
         del_btn = QPushButton("🗑")
         del_btn.setFixedSize(36, 36)
         del_btn.setToolTip("Hapus product ini")
         del_btn.setStyleSheet(
             "QPushButton { background-color: #ef4444; color: white; border: none;"
-            " border-radius: 4px; font-size: 13px; padding: 0 10px;}"
+            " border-radius: 4px; font-size: 13px; }"
             "QPushButton:hover { background-color: #dc2626; }"
             "QPushButton:pressed { background-color: #b91c1c; }"
         )
@@ -309,10 +506,9 @@ class StoragePage(QWidget):
 
         return container
 
-    # ── Data ─────────────────────────────────────────────────────────────────
+    # ── Data ──────────────────────────────────────────────────────────────────
 
     def _refresh(self) -> None:
-        """Ambil semua data dari DB, simpan cache, lalu render."""
         self._all_products = get_all_products()
         self._update_stats()
         self._apply_filter()
@@ -335,7 +531,6 @@ class StoragePage(QWidget):
             self._alert_label.hide()
 
     def _apply_filter(self) -> None:
-        """Filter berdasarkan teks pencarian dan checkbox low-stock."""
         q = self.search.text().lower()
         low_only = self.low_cb.isChecked()
 
@@ -364,13 +559,11 @@ class StoragePage(QWidget):
             status_item.setForeground(QColor(DANGER_FG if is_low else SUCCESS_FG))
             self.table.setItem(r, 7, status_item)
 
-            # Tombol Edit + Hapus langsung di baris
             self.table.setCellWidget(r, 8, self._make_action_widget(p))
 
     # ── Aksi CRUD ─────────────────────────────────────────────────────────────
 
     def _open_create_dialog(self) -> None:
-        """Buka dialog tambah product baru."""
         dlg = ProductDialog(self)
         if dlg.exec() == QDialog.DialogCode.Accepted:
             data = dlg.get_data()
@@ -383,7 +576,6 @@ class StoragePage(QWidget):
                 QMessageBox.critical(self, "Error", "Gagal menambahkan product.")
 
     def _open_edit_dialog(self, product: dict) -> None:
-        """Buka dialog edit untuk product yang diberikan."""
         dlg = ProductDialog(self, product=product)
         if dlg.exec() == QDialog.DialogCode.Accepted:
             data = dlg.get_data()
@@ -395,8 +587,14 @@ class StoragePage(QWidget):
             else:
                 QMessageBox.critical(self, "Error", "Gagal memperbarui product.")
 
+    def _open_supplier_dialog(self, product: dict) -> None:
+        """Buka SupplierProductDialog untuk product yang diklik."""
+        dlg = SupplierProductDialog(self, product=product)
+        dlg.exec()
+        # Tidak perlu refresh StoragePage karena relasi supplier
+        # tidak mengubah data product itu sendiri.
+
     def _delete_product(self, product: dict) -> None:
-        """Konfirmasi lalu hapus product yang diberikan."""
         confirm = QMessageBox.question(
             self,
             "Konfirmasi Hapus",
