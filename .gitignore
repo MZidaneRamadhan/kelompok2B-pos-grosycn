@@ -20,8 +20,8 @@ __pycache__/
 *.pyo
 *.pyd
 
-.csv
-.xlsx
+*.csv
+*.xlsx
 
 # IDE
 .vscode/
