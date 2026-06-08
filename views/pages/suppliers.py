@@ -1017,8 +1017,9 @@ class SuppliersPage(QWidget):
             reviews = int(s.get("user_ratings_total") or s.get("reviews") or 0)
             if rating == 0 and reviews == 0:
                 continue
-            name   = (s.get("supplier_name") or "-").replace("'", "\'").replace('"', '\"')
-            alamat = (s.get("alamat") or "-").replace("'", "\'").replace('"', '\"')
+            # Sanitize untuk konteks JSON di dalam HTML (hindari karakter pemutus string)
+            name   = (s.get("supplier_name") or "-").replace("\\", "").replace('"', "&quot;").replace("'", "&#39;")
+            alamat = (s.get("alamat") or "-").replace("\\", "").replace('"', "&quot;").replace("'", "&#39;")
 
             # Tentukan warna berdasarkan kuadran insight
             avg_reviews = 50  # threshold: banyak review
@@ -1061,14 +1062,16 @@ class SuppliersPage(QWidget):
 var raw = {points_json};
 
 // Semua titik digabung ke SATU dataset agar tidak ada batas jumlah dataset.
-// Warna per-titik diatur lewat array backgroundColor/borderColor.
+// FIX: pointRadius & pointHoverRadius harus berupa ARRAY (satu nilai per titik)
+// agar Chart.js v4 render semua titik dengan benar, bukan skalar tunggal.
+var n = raw.length;
 var dataset = {{
-  data:            raw.map(function(p){{ return {{x:p.x, y:p.y}}; }}),
-  backgroundColor: raw.map(function(p){{ return p.backgroundColor; }}),
-  borderColor:     raw.map(function(p){{ return p.borderColor; }}),
-  pointRadius:     9,
-  pointHoverRadius:12,
-  borderWidth:     2,
+  data:             raw.map(function(p){{ return {{x:p.x, y:p.y}}; }}),
+  backgroundColor:  raw.map(function(p){{ return p.backgroundColor; }}),
+  borderColor:      raw.map(function(p){{ return p.borderColor; }}),
+  pointRadius:      Array(n).fill(9),
+  pointHoverRadius: Array(n).fill(12),
+  borderWidth:      2,
 }};
 
 var ctx = document.getElementById('c').getContext('2d');

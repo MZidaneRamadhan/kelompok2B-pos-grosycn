@@ -422,32 +422,49 @@ class ReportsPage(QWidget):
             return
         if not path.lower().endswith('.pdf'):
             path += '.pdf'
-            
+
         try:
             html = "<h1>Transaction Report</h1>"
             html += "<table border='1' cellspacing='0' cellpadding='5' width='100%'>"
             html += "<tr><th>ID</th><th>Date</th><th>Total</th><th>Payment</th></tr>"
-            
+
             for trx in selected:
                 html += f"<tr><td><b>{trx['id']}</b></td><td>{trx['date']} {trx['time']}</td>"
                 html += f"<td>{trx['total']}</td><td>{trx['payment']}</td></tr>"
                 if trx["items"]:
-                    html += "<tr><td colspan='5'>"
+                    html += "<tr><td colspan='4'>"
                     html += "<ul>"
                     for item in trx["items"]:
                         name = item.get("product_name") or item.get("name", "-")
                         qty  = item.get("quantity") or item.get("qty", 1)
                         html += f"<li>{name} - {qty} - Rp{item.get('subtotal', 0):,.0f}</li>"
                     html += "</ul></td></tr>"
-                    
+
             html += "</table>"
-            
+
+            # FIX: QPdfWriter di PyQt6 memerlukan QPainter agar rendering bisa
+            # berjalan, dan PDF baru benar-benar di-flush ke disk setelah
+            # painter.end() dipanggil. Tanpa painter.end(), file kosong/tidak tersimpan.
+            from PyQt6.QtGui import QPainter
+
+            writer = QPdfWriter(path)
+            writer.setPageSize(QPageSize(QPageSize.PageSizeId.A4))
+            writer.setResolution(96)
+
             doc = QTextDocument()
+            doc.setPageSize(
+                writer.pageLayout().paintRectPixels(writer.resolution()).size().toSizeF()
+            )
             doc.setHtml(html)
-            
-            printer = QPdfWriter(path)
-            printer.setPageSize(QPageSize(QPageSize.PageSizeId.A4))
-            doc.print(printer)
+
+            painter = QPainter()
+            if not painter.begin(writer):
+                self.status_msg.emit("Error: tidak bisa membuka file PDF untuk ditulis.")
+                return
+
+            doc.drawContents(painter)
+            painter.end()   # ← flush & simpan PDF ke disk
+
             self.status_msg.emit("Successfully exported PDF!")
         except Exception as e:
             self.status_msg.emit(f"Error exporting PDF: {e}")
